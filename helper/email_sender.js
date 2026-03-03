@@ -131,7 +131,7 @@ class SendEmails {
       <p>Dear <strong style="text-transform: capitalize;">${firstName}</strong>,</p>
 
       <p>
-        We received a request to reset your password. Please use the One-Time Password (OTP) below to continue::
+        We received a request to reset your password. Please use the One-Time Password (OTP) below to continue:
       </p>
 
          <div style="text-align: center; margin: 30px 0;">
