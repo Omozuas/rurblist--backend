@@ -3,6 +3,8 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const bcrypt = require('bcrypt');  // ADD THIS LINE
 const User = require('../models/User');
 const SendEmails = require('../helper/email_sender');
+const { nanoid } = require("nanoid");
+
 
 passport.serializeUser((user, done) => {
   done(null, user.id);
@@ -24,7 +26,7 @@ passport.use(new GoogleStrategy({
     const randomPassword = Math.random().toString(36).slice(-8);
     const hashedPassword = await bcrypt.hash(randomPassword, 10);
     const profileImage = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
-
+    const username = `${baseUsername}_${nanoid(5)}`;
     const newUser = await User.create({
       googleId: profile.id,
       fullName: profile.displayName,
@@ -33,6 +35,7 @@ passport.use(new GoogleStrategy({
       phoneNumber: 'google-oauth',
       isEmailVerified: true,
       profileImage: profileImage,
+      username:username
     });
      // send welcome email
   await SendEmails.sendWelcomeEmail(

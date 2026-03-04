@@ -6,7 +6,7 @@ const SendEmails = require('../helper/email_sender');
 const jwtToken = require('../config/jwtToken');
 const crypto=require('crypto');
 const passport = require('passport');
-
+const { nanoid } = require("nanoid");
 
 class AuthController{
    
@@ -36,7 +36,7 @@ class AuthController{
             // GENERATE OTP
             const otp = generateOtp();
             const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
+            const username = `${baseUsername}_${nanoid(5)}`;
              const newUser = new User({
                 fullName: req.body.fullName,
                 phoneNumber: req.body.phoneNumber,
@@ -44,7 +44,8 @@ class AuthController{
                 role:req.body.role,
                 password: hashedPassword,
                 otp: otp,
-                otpExpires: otpExpires
+                otpExpires: otpExpires,
+                username: username
             });
             
              // SAVE USER
