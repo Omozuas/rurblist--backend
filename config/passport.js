@@ -34,7 +34,9 @@ passport.use(new GoogleStrategy({
       password: hashedPassword,
       phoneNumber: 'google-oauth',
       isEmailVerified: true,
-      profileImage: profileImage,
+      profileImage:{
+        url: profileImage
+      },
       username:username
     });
      // send welcome email

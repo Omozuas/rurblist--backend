@@ -27,8 +27,15 @@ var userSchema= new mongoose.Schema({
     unique: true,
     required: false
     },
-    profileImage:{
-        type:String
+   profileImage: {
+        url: {
+            type: String,
+            default: null
+        },
+        public_id: {
+            type: String,
+            default: null
+        }
     },
     phoneNumber:{
         type:String,

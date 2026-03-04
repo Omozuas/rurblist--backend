@@ -13,7 +13,8 @@ class AuthController{
     static createUser = asynchandler(async(req,res)=>{
 
         const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-
+         const strongPassword =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
         if(!emailRegex.test(req.body.email)){
             res.status(401);
             throw new Error("Email is not valid")
@@ -25,7 +26,12 @@ class AuthController{
             res.status(401);
             throw new Error( "Password should be at least " + minPasswordLength + " characters long")
         }
-        
+        if (!strongPassword.test(req.body.password)) {
+            res.status(400);
+            throw new Error(
+            "Password must contain uppercase, lowercase, number, special character and be at least 8 characters"
+            );
+        }
         try {
             const isExisting = await User.findOne({ email: req.body.email });
             if (isExisting) {

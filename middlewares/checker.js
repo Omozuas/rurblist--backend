@@ -23,9 +23,15 @@ class Checker {
          
          // Check if user is blocked
          if (user.isBlocked) {
+            res.status(404)
             throw new Error('Your account has been blocked');
          }
          
+         if (user.passwordChangedDate) {
+            if (decode.iat * 1000 < user.passwordChangedDate.getTime()) {
+               throw new Error("Password recently changed. Please login again.");
+            }
+         }
          // Check if email is verified (optional - uncomment if needed)
          // if (!user.isEmailVerified) {
          //    throw new Error('Please verify your email first');
@@ -35,6 +41,7 @@ class Checker {
          next();
          
       } catch (err) {
+         res.status(400)
          throw new Error('Wrong or expired token');
       }
    });

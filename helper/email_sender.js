@@ -291,7 +291,102 @@ Follow us for updates and property tips!
 
    const info = await SendEmails.transporter.sendMail(mailOptions);
   return info;
-};
+  };
+
+  static sendPasswordChangeAlertEmail = async (email, firstName) => {
+
+        const rurblistEmail = process.env.EMAIL_USERNAME;
+        const currentYear = new Date().getFullYear();
+        const time = new Date().toLocaleString();
+
+        const mailOptions = {
+          from: `"Rurblist Security" <${process.env.EMAIL_USERNAME}>`,
+          to: email,
+          subject: "Security Alert: Your Password Was Changed",
+          text: `Hello ${firstName}, your Rurblist account password was changed on ${time}. If you did not perform this action please contact support immediately.`,
+          
+          html: `<!DOCTYPE html>
+      <html>
+      <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Security Alert - Password Changed</title>
+      </head>
+
+      <body style="font-family: Arial, sans-serif; background:#f9f9f9; padding:20px; color:#333;">
+
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:auto;background:#ffffff;border-radius:8px;overflow:hidden">
+
+      <tr>
+      <td style="padding:20px;text-align:center;background:#ec6c10;color:#ffffff">
+      <h1 style="margin:0">Rurblist</h1>
+      <p style="margin:0">Account Security Notification</p>
+      </td>
+      </tr>
+
+      <tr>
+      <td style="padding:30px">
+
+      <p>Dear <strong style="text-transform:capitalize;">${firstName}</strong>,</p>
+
+      <p>
+      This is a security notification to inform you that your <strong>Rurblist account password was recently changed</strong>.
+      </p>
+
+      <p style="margin-top:15px;">
+      <strong>Time of change:</strong> ${time}
+      </p>
+
+      <p>
+      If you made this change, no further action is required.
+      </p>
+
+      <p style="color:#d9534f; font-weight:bold;">
+      If you did NOT change your password, please contact our support team immediately to secure your account.
+      </p>
+
+      <p style="text-align:center;margin:30px 0">
+      <a href="${process.env.FRONTEND_URL}/login"
+      style="background:#ec6c10;color:#ffffff;padding:12px 25px;text-decoration:none;border-radius:6px;font-weight:bold;">
+      Secure Your Account
+      </a>
+      </p>
+
+      <p>If you need help, our support team is always ready to assist.</p>
+
+      <p style="font-size:14px">
+      <strong>Email:</strong> 
+      <a href="mailto:${rurblistEmail}" style="color:#ec6c10">${rurblistEmail}</a>
+      </p>
+
+      <p>Stay safe,<br/>
+      <strong>Rurblist Security Team</strong>
+      </p>
+
+      <hr style="border:none;border-top:1px solid #eee;margin:25px 0"/>
+
+      <p style="text-align:center;font-size:13px;color:#777">
+      Security tip: Never share your password with anyone.
+      </p>
+
+      </td>
+      </tr>
+
+      <tr>
+      <td style="padding:12px;text-align:center;background:#f1f1f1;font-size:12px;color:#777">
+      © ${currentYear} Rurblist. All rights reserved.
+      </td>
+      </tr>
+
+      </table>
+
+      </body>
+      </html>`
+        };
+
+        const info = await SendEmails.transporter.sendMail(mailOptions);
+        return info;
+      };
 }
 
 module.exports = SendEmails;
