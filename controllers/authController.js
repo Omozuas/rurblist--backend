@@ -42,7 +42,7 @@ class AuthController{
             // GENERATE OTP
             const otp = generateOtp();
             const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-            const username = `${baseUsername}_${nanoid(5)}`;
+            const username = `${req.body.fullName}_${nanoid(5)}`;
              const newUser = new User({
                 fullName: req.body.fullName,
                 phoneNumber: req.body.phoneNumber,
@@ -196,16 +196,24 @@ class AuthController{
             refreshToken: refreshToken,
             isLogin: true
         });
-
+        const isProduction = process.env.NODE_ENV === "production";
         res.cookie("refreshToken", refreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: "strict",
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
             maxAge: 72 * 60 * 60 * 1000,
+            
+        });
+        res.cookie("rublist_role", isExisting.role, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
         });
 
         return res.status(200).json({
-            token: accessToken,
+            data:{
+              token: accessToken,
+            },
             message: "Login successful",
             success: true
         });
@@ -278,7 +286,19 @@ class AuthController{
                 throw new Error("Invalid or expired OTP");
             }
 
-             // Hash new password
+              /**
+                 * 🚨 Prevent using same old password
+                 */
+                const isSamePassword = await bcrypt.compare(password, user.password);
+
+                if (isSamePassword) {
+                    res.status(400);
+                    throw new Error("New password cannot be the same as your previous password");
+                }
+
+                /**
+                 * Hash new password
+                 */
             const hashedPassword = await bcrypt.hash(password, 10);
     
             user.password = hashedPassword;
@@ -371,7 +391,80 @@ class AuthController{
         })
     ];
 
+    static refreshAccessToken = asynchandler(async (req, res) => {
 
+        const refreshToken = req.cookies.refreshToken;
+
+        if (!refreshToken) {
+            res.status(401);
+            throw new Error("No refresh token provided");
+        }
+
+        let decoded;
+
+        try {
+            decoded = jwtToken.verifyToken(refreshToken);
+        } catch (err) {
+            res.status(403);
+            throw new Error("Invalid or expired refresh token");
+        }
+
+        const user = await User.findById(decoded.userId);
+
+        if (!user || user.refreshToken !== refreshToken) {
+            res.status(403);
+            throw new Error("Refresh token does not match");
+        }
+
+        if (user.isBlocked) {
+            res.status(403);
+            throw new Error("Account is blocked");
+        }
+
+        /**
+         * Optional: Check if password was changed after token was issued
+         */
+        if (user.passwordChangedDate) {
+            const tokenIssuedAt = decoded.iat * 1000;
+            if (tokenIssuedAt < user.passwordChangedDate.getTime()) {
+                res.status(401);
+                throw new Error("Password changed. Please login again.");
+            }
+        }
+
+        /**
+         * Generate new tokens (rotation)
+         */
+        const newAccessToken = jwtToken.generateToken(
+            user.id,
+            user.role,
+            user.email
+        );
+
+        const newRefreshToken = jwtToken.generateRefreshToken(
+            user.id,
+            user.role
+        );
+
+        user.refreshToken = newRefreshToken;
+        await user.save();
+        const isProduction = process.env.NODE_ENV === "production";
+        res.cookie("refreshToken", newRefreshToken, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        return res.status(200).json({
+            success: true,
+            message:"success",
+            data:{
+                accessToken: newAccessToken
+            }
+        });
+
+    });
 
 }
 

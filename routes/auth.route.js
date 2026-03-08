@@ -26,9 +26,15 @@ const resetPasswordLimiter = rateLimit({
     }
 });
 
-// Routes with rate limiting
-Route.post('/forgot-password', forgotPasswordLimiter, AuthController.forgotPassword);
-Route.post('/reset-password', resetPasswordLimiter, AuthController.resetPassword);
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: {
+        success: false,
+        message: "Too many login attempts. Try again later."
+    }
+});
+
 
 
 // Create new user
@@ -40,8 +46,15 @@ Route.post('/verify-otp', AuthController.verifyOtp);
 // Resend OTP
 Route.post('/resend-otp', AuthController.resendOtp);
 
+// Routes with rate limiting
+Route.post('/forgot-password', forgotPasswordLimiter, AuthController.forgotPassword);
+Route.post('/reset-password', resetPasswordLimiter, AuthController.resetPassword);
+
 //login user
-Route.post("/login", AuthController.loginUser);
+Route.post("/login",loginLimiter, AuthController.loginUser);
+
+// refresh token
+Route.post("/refresh-token", AuthController.refreshAccessToken);
 
 // Logout user (requires authentication)
 Route.post('/logout', Checker.authmiddleware, AuthController.logout);
@@ -50,9 +63,6 @@ Route.post('/logout', Checker.authmiddleware, AuthController.logout);
 Route.get('/google-auth', AuthController.googleAuth);
 Route.get('/google/callback', AuthController.googleCallback);
 
-
-Route.use(errorHandler.notfound);
-Route.use(errorHandler.errorHandler);
 
 
 module.exports = Route;

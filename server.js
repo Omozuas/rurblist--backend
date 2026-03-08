@@ -25,7 +25,13 @@ require('./config/passport'); // Load Google strategy
 const app=express();
 
 //app use
-app.use(cors());
+app.use(cors({
+    origin: [
+    "http://localhost:3000",
+    "http://192.168.1.161:3000"
+    ],
+    credentials: true
+}));
 app.use(morgan('dev'));
 app.use(bodyPerser.json());
 app.use(express.json());
