@@ -14,6 +14,7 @@ const passport=require('passport')
 const Router=require('./routes/index');
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
+const propertyRoutes = require('./routes/property.route');
 
 //load env 
 dotenv.config();
@@ -44,6 +45,7 @@ app.use(passport.initialize());
 app.use(Router);
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/property', propertyRoutes);
 
 //error handlers
 app.use(errorhandler.notfound);

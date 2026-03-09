@@ -56,12 +56,15 @@ Route.post("/login",loginLimiter, AuthController.loginUser);
 // refresh token
 Route.post("/refresh-token", AuthController.refreshAccessToken);
 
+Route.post("/verify-google-otp", AuthController.verifyGoogleOtp);
+
 // Logout user (requires authentication)
 Route.post('/logout', Checker.authmiddleware, AuthController.logout);
 
 // Google Auth routes
 Route.get('/google-auth', AuthController.googleAuth);
 Route.get('/google/callback', AuthController.googleCallback);
+
 
 
 

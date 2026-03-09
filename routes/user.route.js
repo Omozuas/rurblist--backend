@@ -17,18 +17,18 @@ const passwordChangeLimiter = rateLimit({
 module.exports = passwordChangeLimiter;
 
 
-Route.get("/", checker.authmiddleware,checker.authIsAdmin,checker.authIsAdmin,userController.getUsers);
+Route.get("/", checker.authmiddleware,checker.allowRoles("Admin"),userController.getUsers);
 Route.get("/me", checker.authmiddleware,userController.getCurrentUser);
 Route.get("/:id", checker.authmiddleware,userController.getUserbyId);
 
 
 Route.put('/edit-user',checker.authmiddleware,Upload.single('image'),userController.updateUserbyId);
-Route.patch('/block-user/:id',checker.authmiddleware,checker.authIsAdmin,userController.blockUserbyId);
-Route.patch('/unblock-user/:id',checker.authmiddleware,checker.authIsAdmin,userController.unblockUserbyId);
+Route.patch('/block-user/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.blockUserbyId);
+Route.patch('/unblock-user/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.unblockUserbyId);
 Route.patch('/change-password',checker.authmiddleware,passwordChangeLimiter,userController.updateUserPasswordbyId);
 
 Route.delete('/me',checker.authmiddleware,userController.deleteMyAccount);
-Route.delete('/:id',checker.authmiddleware,checker.authIsAdmin,userController.deleteUserbyId);
+Route.delete('/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.deleteUserbyId);
 
 Route.use(errorHandler.notfound);
 Route.use(errorHandler.errorHandler);

@@ -358,29 +358,22 @@ class AuthController{
         asynchandler(async (req, res) => {
             try {
                 const user = req.user;
-            
-                const refreshToken = jwtToken.generateRefreshToken(user.id, user.role);
+
+                const otp=generateOtp();
+                const hashedOtp =   crypto
+                    .createHmac("sha256", process.env.SH_KEY)
+                    .update(otp)
+                    .digest("hex");
                 await User.findByIdAndUpdate(user.id, {
-                    refreshToken: refreshToken,
-                    isLogin: true,
-                });
-            
-                res.cookie("refreshToken", refreshToken, {
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === 'production',
-                    sameSite: "strict",
-                    maxAge: 72 * 60 * 60 * 1000,
-                });
-            
-                const token = jwtToken.generateToken(user.id, user.role, user.email);
-            
-                // Return JSON response with redirect URL
-                return res.status(200).json({
-                    token: token,
-                    refreshToken: refreshToken,
-                    redirectUrl: `${process.env.CLIENT_URL}/oauth-success?token=${token}`,
-                    success: true
-                });
+                                    otp: hashedOtp,
+                                    otpExpires:  Date.now() + 3 * 60 * 1000 // 3 minutes,
+                        });
+                    
+               
+                return res.redirect(
+                    `${process.env.FRONTEND_URL}/oAuth-success-page?otp=${otp}`,
+                   
+                );
             
             } catch (error) {
                 return res.status(500).json({
@@ -465,7 +458,57 @@ class AuthController{
         });
 
     });
+    static verifyGoogleOtp = asynchandler(async (req, res) => {
 
+        const { otp } = req.body;
+
+        if (!otp) {
+            res.status(400);
+            throw new Error("OTP required");
+        }
+
+        const hashedOtp = crypto
+      .createHmac("sha256", process.env.SH_KEY)
+      .update(otp)
+      .digest("hex");
+
+        const user = await User.findOne({
+            otp: hashedOtp,
+            otpExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            res.status(400);
+            throw new Error("Invalid or expired OTP");
+        }
+
+        // Clear OTP fields
+        user.otp = undefined;
+        user.otpExpires = undefined;
+
+        const refreshToken = jwtToken.generateRefreshToken(user.id, user.role);
+        const accessToken = jwtToken.generateToken(user.id, user.role, user.email);
+
+        user.refreshToken = refreshToken;
+        user.isLogin = true;
+
+        await user.save();
+
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
+
+        res.status(200).json({
+            success: true,
+            data:{ 
+                accessToken:accessToken
+            }
+        });
+
+    });
 }
 
 module.exports = AuthController;
