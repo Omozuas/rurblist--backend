@@ -1,6 +1,7 @@
 const asynchandler = require("express-async-handler");
 const fs = require("fs");
 const User = require("../models/User");
+const Property = require("../models/Property");
 const UploadCloud = require("../config/cloudnary");
 const validateId = require("../helper/validatemongodb");
 const ApiFeatures = require("../helper/userQueryDB");
@@ -343,6 +344,60 @@ class UserController{
             message: "Password updated successfully"
         });
 
+    });
+
+    static toggleSaveProperty = asynchandler(async (req, res) => {
+        const { propertyId } = req.params;
+        const userId = req.user.id;
+
+        const property = await Property.findById(propertyId);
+
+        if (!property) {
+            res.status(404);
+            throw new Error("Property not found");
+        }
+
+        const user = await User.findById(userId);
+
+        const isSaved = user.savedProperties.includes(propertyId);
+
+        if (isSaved) {
+            await User.findByIdAndUpdate(userId, {
+                $pull: { savedProperties: propertyId }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Property removed from saved"
+            });
+        }
+
+        await User.findByIdAndUpdate(userId, {
+            $addToSet: { savedProperties: propertyId }
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Property saved"
+        });
+    });
+
+    static getSavedProperties = asynchandler(async (req, res) => {
+
+        const user = await User.findById(req.user.id)
+            .populate({
+                path: "savedProperties",
+                populate: {
+                    path: "owner",
+                    select: "fullName profileImage role phoneNumber"
+                }
+            });
+
+        res.status(200).json({
+            success: true,
+            count: user.savedProperties.length,
+            properties: user.savedProperties
+        });
     });
 }
 

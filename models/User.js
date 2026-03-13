@@ -1,6 +1,4 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 
 // Declare the userSchema of the Mongo model
 
@@ -109,4 +107,5 @@ var userSchema= new mongoose.Schema({
 );
 
 //Export the model
-module.exports = mongoose.model('User', userSchema);
+const User= mongoose.model('User', userSchema);
+module.exports =User;

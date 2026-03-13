@@ -7,11 +7,12 @@ const validateId = require("../helper/validatemongodb");
 const UploadCloud = require("../config/cloudnary");
 const slugify = require("slugify");
 const fs = require("fs");
+const mongoose=require("mongoose");
 
 class PropertyController{
     /*
      /api/properties?search=duplex
-     /api/properties?price[gte]=500000&price[lte]=2000000
+     /api/property?minPrice=20000000&maxPrice=35000000
      /api/properties?bedrooms[gte]=3
      /api/properties?lat=6.5244&lng=3.3792&radius=10
      /api/properties?sort=-trendingScore
@@ -47,7 +48,7 @@ search=lekki
             .sort()
             .limitFields()
             .cursorPaginate()
-            .populate(["owner","comment"]);
+            .populate(["owner -password","comments"]);
 
         const properties = await features.query.lean();
 
@@ -57,8 +58,6 @@ search=lekki
             properties
         });
     };
-
-
 
     static updateProperty = asynchandler(async (req, res) => {
         const { id } = req.params;
@@ -134,8 +133,7 @@ search=lekki
             property
         });
     });
-
-    
+  
     static deleteProperty = asynchandler(async (req, res) => {
         const { id } = req.params;
          validateId.validateMongodbId(id);
@@ -180,10 +178,43 @@ search=lekki
 
     static unlikeProperty = asynchandler(async (req, res) => {
         const { id } = req.params;
+        const userId = req.user.id;
 
+        const property = await Property.findById(id);
+
+        if (!property) {
+            res.status(404);
+            throw new Error("Property not found");
+        }
+
+        const alreadyLiked = property.likes.includes(userId);
+        const alreadyUnliked = property.unlikes.includes(userId);
+
+        // Toggle unlike off
+        if (alreadyUnliked) {
+            await Property.findByIdAndUpdate(id, {
+                $pull: { unlikes: userId },
+                $inc: { unlikesCount: -1 }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Unlike removed"
+            });
+        }
+
+        // Remove like if previously liked
+        if (alreadyLiked) {
+            await Property.findByIdAndUpdate(id, {
+                $pull: { likes: userId },
+                $inc: { likesCount: -1 }
+            });
+        }
+
+        // Add unlike
         await Property.findByIdAndUpdate(id, {
-            $pull: { likes: req.user.id },
-            $inc: { likesCount: -1 }
+            $addToSet: { unlikes: userId },
+            $inc: { unlikesCount: 1 }
         });
 
         res.status(200).json({
@@ -194,6 +225,7 @@ search=lekki
 
     static likeProperty = asynchandler(async (req, res) => {
         const { id } = req.params;
+        const userId = req.user.id;
 
         const property = await Property.findById(id);
 
@@ -202,13 +234,33 @@ search=lekki
             throw new Error("Property not found");
         }
 
-        if (property.likes.includes(req.user.id)) {
-            res.status(400);
-            throw new Error("Already liked this property");
+        const alreadyLiked = property.likes.includes(userId);
+        const alreadyUnliked = property.unlikes.includes(userId);
+
+        // Toggle like off
+        if (alreadyLiked) {
+            await Property.findByIdAndUpdate(id, {
+                $pull: { likes: userId },
+                $inc: { likesCount: -1 }
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Like removed"
+            });
         }
 
+        // If user had disliked before
+        if (alreadyUnliked) {
+            await Property.findByIdAndUpdate(id, {
+                $pull: { unlikes: userId },
+                $inc: { unlikesCount: -1 }
+            });
+        }
+
+        // Add like
         await Property.findByIdAndUpdate(id, {
-            $addToSet: { likes: req.user.id },
+            $addToSet: { likes: userId },
             $inc: { likesCount: 1 }
         });
 
@@ -276,14 +328,14 @@ search=lekki
         });
     });
 
-   static getSingleProperty = asynchandler(async (req, res) => {
+    static getSingleProperty = asynchandler(async (req, res) => {
         const { id } = req.params;
         const currentUserId = req.user ? req.user.id : null;
 
         const property = await Property.findByIdAndUpdate(
             id,
             { $inc: { views: 1 } },
-            { new: true }
+            { returnDocument: "after" }
         )
             .populate("owner", "fullName profileImage role")
             .lean();
@@ -311,7 +363,24 @@ search=lekki
                 as: "user"
             }
             },
-            { $unwind: "$user" },
+            { 
+                $unwind: "$user" 
+            },
+            {
+                $project: {
+                    text: 1,
+                    property: 1,
+                    parentComment: 1,
+                    createdAt: 1,
+                    updatedAt: 1,
+
+                    "user._id": 1,
+                    "user.fullName": 1,
+                    "user.profileImage": 1,
+                    "user.role": 1,
+                    "user.phoneNumber": 1
+                }
+            },
 
             // Replies lookup
             {
@@ -332,7 +401,24 @@ search=lekki
                     as: "user"
                     }
                 },
-                { $unwind: "$user" },
+                { 
+                    $unwind: "$user" 
+                },
+                {
+                    $project: {
+                        text: 1,
+                        property: 1,
+                        parentComment: 1,
+                        createdAt: 1,
+                        updatedAt: 1,
+
+                        "user._id": 1,
+                        "user.fullName": 1,
+                        "user.profileImage": 1,
+                        "user.role": 1,
+                        "user.phoneNumber": 1
+                    }
+                },
 
                 {
                     $addFields: {
@@ -426,27 +512,55 @@ search=lekki
             res.status(400);
             throw new Error("Property coordinates (lat & lng) are required");
         }
-        
+
+        // Validate images exist
+        if (!req.files || req.files.length === 0) {
+            res.status(400);
+            throw new Error("At least one property image is required");
+        }
+        if (req.files.length < 3) {
+            res.status(400);
+            throw new Error("Minimum 3 property images required");
+        }
         if (req.files.length > 6) {
+            res.status(400);
             throw new Error("Maximum 6 images allowed");
         }
+
+        const count = await Property.countDocuments({ owner: req.user.id });
+
+        if (count >= 50) {
+            res.status(400);
+            throw new Error("Property limit reached");
+        }
+
         // ===============================
         // 🖼 Upload Images to Cloudinary
         // ===============================
         let uploadedImages = [];
 
         if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-            const result = await UploadCloud.upload(file.path, "properties");
+            try {
+                for (const file of req.files) {
+                    const result = await UploadCloud.upload(file.path, "properties");
 
-            uploadedImages.push({
-                url: result.url,
-                public_id: result.public_id
-            });
+                    uploadedImages.push({
+                        url: result.url,
+                        public_id: result.public_id
+                    });
 
-            // Remove file from local storage
-            fs.unlinkSync(file.path);
+                    // Remove file from local storage
+                    fs.unlinkSync(file.path);
+                }
+            } catch (error) {
+                // delete already uploaded images
+                await Promise.all(uploadedImages.map(img =>
+                    UploadCloud.delete(img.public_id)
+                ));
+                res.status(400);
+                throw new Error(error);
             }
+            
         }
 
         // ===============================
@@ -504,6 +618,201 @@ search=lekki
         res.status(200).json({
             success: true,
             data: property
+        });
+    });
+    
+    static getMyProperties = asynchandler(async (req, res) => {
+        const userId = req.user.id;
+
+        const features = new PropertySearch(
+            Property.find({ owner: userId }),
+            req.query
+        )
+            .filter()
+            .sort()
+            .limitFields()
+            .cursorPaginate()
+            .populate(["owner fullName profileImage role phoneNumber"]);
+
+        const properties = await features.query;
+
+        // Get comment counts for all properties
+        const propertyIds = properties.map(p => p._id);
+
+        const commentsCount = await Comment.aggregate([
+            {
+                $match: {
+                    property: { $in: propertyIds }
+                }
+            },
+            {
+                $group: {
+                    _id: "$property",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const countMap = {};
+        commentsCount.forEach(c => {
+            countMap[c._id.toString()] = c.count;
+        });
+
+        // Attach count to each property
+        const result = properties.map(property => ({
+            ...property.toObject(),
+            commentsCount: countMap[property._id.toString()] || 0
+        }));
+
+        res.status(200).json({
+            success: true,
+            count: result.length,
+            properties: result
+        });
+    });
+    
+    /*GET /api/property/69b316fc2c8fd1f441fc01f8/comments?replyLimit=3&replyPage=1*/
+    static getCommentsByProperty = asynchandler(async (req, res) => {
+        const { propertyId } = req.params;
+
+        const currentUserId = req.user ? req.user.id : null;
+
+        const replyLimit = parseInt(req.query.replyLimit) || 3;
+        const replyPage = parseInt(req.query.replyPage) || 1;
+        const replySkip = (replyPage - 1) * replyLimit;
+
+        const property = await Property.findById(propertyId).select("owner");
+
+        if (!property) {
+            res.status(404);
+            throw new Error("Property not found");
+        }
+
+        const ownerId = property.owner;
+
+        const comments = await Comment.aggregate([
+            {
+            $match: {
+                property: new mongoose.Types.ObjectId(propertyId),
+                parentComment: null
+            }
+            },
+
+            // attach comment user
+            {
+            $lookup: {
+                from: "users",
+                localField: "user",
+                foreignField: "_id",
+                as: "user"
+            }
+            },
+            { $unwind: "$user" },
+
+            {
+            $project: {
+                text: 1,
+                property: 1,
+                parentComment: 1,
+                createdAt: 1,
+
+                "user._id": 1,
+                "user.fullName": 1,
+                "user.profileImage": 1,
+                "user.role": 1,
+                "user.phoneNumber": 1
+            }
+            },
+
+            // replies lookup with pagination
+            {
+            $lookup: {
+                from: "comments",
+                let: { commentId: "$_id" },
+                pipeline: [
+                {
+                    $match: {
+                    $expr: {
+                        $eq: ["$parentComment", "$$commentId"]
+                    }
+                    }
+                },
+
+                { $sort: { createdAt: 1 } },
+
+                { $skip: replySkip },
+
+                { $limit: replyLimit },
+
+                {
+                    $lookup: {
+                    from: "users",
+                    localField: "user",
+                    foreignField: "_id",
+                    as: "user"
+                    }
+                },
+                { $unwind: "$user" },
+
+                {
+                    $project: {
+                    text: 1,
+                    property: 1,
+                    parentComment: 1,
+                    createdAt: 1,
+
+                    "user._id": 1,
+                    "user.fullName": 1,
+                    "user.profileImage": 1,
+                    "user.role": 1,
+                    "user.phoneNumber": 1
+                    }
+                },
+
+                {
+                    $addFields: {
+                    isOwnerReply: {
+                        $eq: ["$user._id", ownerId]
+                    },
+                    isCurrentUser: {
+                        $eq: [
+                        "$user._id",
+                        currentUserId
+                            ? new mongoose.Types.ObjectId(currentUserId)
+                            : null
+                        ]
+                    }
+                    }
+                }
+                ],
+                as: "replies"
+            }
+            },
+
+            {
+            $addFields: {
+                isOwnerComment: {
+                $eq: ["$user._id", ownerId]
+                },
+                isCurrentUser: {
+                $eq: [
+                    "$user._id",
+                    currentUserId
+                    ? new mongoose.Types.ObjectId(currentUserId)
+                    : null
+                ]
+                }
+            }
+            },
+
+            { $sort: { createdAt: -1 } }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            replyPage,
+            replyLimit,
+            comments
         });
     });
 

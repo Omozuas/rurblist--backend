@@ -16,6 +16,13 @@ Route.post(
   PropertyController.createProperty
 );
 
+Route.get(
+  "/my-properties",
+  Checker.authmiddleware,
+  Checker.allowRoles("Agent", "Landlord", "Admin"),
+  PropertyController.getMyProperties
+);
+
 // ===============================
 // UPDATE PROPERTY
 // Only Agent, Landlord, Admin
@@ -45,6 +52,12 @@ Route.delete(
 // ===============================
 Route.get("/:id", PropertyController.getSingleProperty);
 
+Route.get(
+  "/",
+  Checker.authmiddleware,
+  PropertyController.searchProperties
+);
+
 // ===============================
 // LIKE / UNLIKE
 // ===============================
@@ -58,5 +71,11 @@ Route.post("/:id/comment", Checker.authmiddleware, PropertyController.addComment
 Route.post("/comment/:commentId/reply", Checker.authmiddleware, PropertyController.addReply);
 
 Route.get("/slug/:slug",Checker.authmiddleware, PropertyController.getPropertyBySlug);
+Route.get(
+  "/:propertyId/comments",
+  Checker.authmiddleware,
+  PropertyController.getCommentsByProperty
+);
+
 
 module.exports = Route;

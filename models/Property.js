@@ -94,17 +94,25 @@ const propertySchema = new mongoose.Schema(
     },
 
     likes: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
+      { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: "User" 
       }
     ],
-
-    likesCount: {
-      type: Number,
-      default: 0
+    unlikes: [
+      { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: "User" 
+      }
+    ],
+    likesCount: { 
+      type: Number, 
+      default: 0 
     },
-
+    unlikesCount: { 
+      type: Number, 
+      default: 0 
+    },
     comments: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -159,7 +167,9 @@ propertySchema.index({ "location.coordinates": "2dsphere" });
 
 // Compound index for filtering
 propertySchema.index({
+  slug: 1 ,
   status: 1,
+  owner: 1,
   type: 1,
   price: 1,
   bedrooms: 1,

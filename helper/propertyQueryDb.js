@@ -24,7 +24,7 @@ class PropertySearch {
         ]
       });
     }
-
+     console.log(`search:${this.query}`);
     return this;
   }
 
@@ -32,34 +32,71 @@ class PropertySearch {
    * ADVANCED FILTERING
    * price[gte]=100000
    */
-  filter() {
-    const queryObj = { ...this.queryString };
+    filter() {
+      const queryObj = { ...this.queryString };
 
-    const excluded = [
-      "page",
-      "limit",
-      "sort",
-      "fields",
-      "search",
-      "cursor",
-      "lat",
-      "lng",
-      "radius"
-    ];
+      const excluded = [
+        "page",
+        "limit",
+        "sort",
+        "fields",
+        "search",
+        "cursor",
+        "lat",
+        "lng",
+        "radius",
+        "minPrice",
+        "maxPrice"
+      ];
 
-    excluded.forEach((el) => delete queryObj[el]);
+      excluded.forEach(el => delete queryObj[el]);
 
-    let queryStr = JSON.stringify(queryObj);
+      // Handle minPrice / maxPrice
+      if (this.queryString.minPrice || this.queryString.maxPrice) {
+        queryObj.price = {};
 
-    queryStr = queryStr.replace(
-      /\b(gt|gte|lt|lte|in)\b/g,
-      (match) => `$${match}`
-    );
+        if (this.queryString.minPrice) {
+          queryObj.price.$gte = Number(this.queryString.minPrice);
+        }
 
-    this.query = this.query.find(JSON.parse(queryStr));
+        if (this.queryString.maxPrice) {
+          queryObj.price.$lte = Number(this.queryString.maxPrice);
+        }
+      }
 
-    return this;
-  }
+      let queryStr = JSON.stringify(queryObj);
+
+      // convert gte -> $gte etc
+      queryStr = queryStr.replace(
+         /\b(?<!\$)(gt|gte|lt|lte|in)\b/g,
+        match => `$${match}`
+      );
+
+      let parsedQuery = JSON.parse(queryStr);
+
+      // numeric fields
+      const numericFields = ["price", "bedrooms", "bathrooms", "size", "agentFee"];
+
+      numericFields.forEach(field => {
+        if (parsedQuery[field]) {
+
+          if (typeof parsedQuery[field] === "object") {
+            Object.keys(parsedQuery[field]).forEach(operator => {
+              parsedQuery[field][operator] = Number(parsedQuery[field][operator]);
+            });
+          } else {
+            parsedQuery[field] = Number(parsedQuery[field]);
+          }
+
+        }
+      });
+
+      this.query = this.query.find(parsedQuery);
+
+      console.log(`filter:${this.query}`);
+
+      return this;
+    }
 
   /**
    * GEO RADIUS SEARCH
@@ -81,7 +118,7 @@ class PropertySearch {
         }
       });
     }
-
+ console.log(`geo:${this.query}`);
     return this;
   }
 
@@ -99,7 +136,7 @@ class PropertySearch {
     }
 
     this.query = this.query.sort(sortOption);
-
+console.log(`sort:${this.query}`);
     return this;
   }
 
@@ -110,8 +147,10 @@ class PropertySearch {
     if (this.queryString.fields) {
       const fields = this.queryString.fields.split(",").join(" ");
       this.query = this.query.select(fields);
+    } else {
+      this.query = this.query.select("-__v");
     }
-
+console.log(`limited:${this.query}`);
     return this;
   }
 
@@ -128,7 +167,7 @@ class PropertySearch {
     }
 
     this.query = this.query.limit(limit);
-
+console.log(`cursor:${this.query}`);
     return this;
   }
 
@@ -142,7 +181,7 @@ class PropertySearch {
     const skip = (page - 1) * limit;
 
     this.query = this.query.skip(skip).limit(limit);
-
+console.log(`psgenated:${this.query}`);
     return this;
   }
 
@@ -151,9 +190,23 @@ class PropertySearch {
    */
   populate(fields = []) {
     fields.forEach((field) => {
-      this.query = this.query.populate(field);
-    });
 
+      if (typeof field === "string") {
+        const parts = field.split(" ");
+        const path = parts[0];
+        const select = parts.slice(1).join(" ");
+
+        this.query = this.query.populate({
+          path,
+          select
+        });
+
+      } else {
+        this.query = this.query.populate(field);
+      }
+
+    });
+console.log(`populate:${this.query}`);
     return this;
   }
 }

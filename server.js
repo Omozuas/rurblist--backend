@@ -25,6 +25,7 @@ require('./config/passport'); // Load Google strategy
 
 const app=express();
 
+app.set("query parser", "extended");
 //app use
 app.use(cors({
     origin: [
