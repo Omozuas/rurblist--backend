@@ -48,7 +48,7 @@ class Checker {
       next();
 
     } catch (err) {
-      res.status(401);
+      res.status(403);
       throw new Error("Invalid or expired token");
     }
   });

@@ -42,6 +42,7 @@ app.use(cookieParser());
 app.use(passport.initialize());
 
 
+
 //router
 app.use(Router);
 app.use('/api/auth', authRoutes);

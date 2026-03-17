@@ -204,6 +204,13 @@ class AuthController{
             maxAge: 72 * 60 * 60 * 1000,
             
         });
+        res.cookie("rublist_auth", accessToken, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
+            maxAge: 72 * 60 * 60 * 1000,
+            
+        });
         res.cookie("rublist_role", isExisting.role, {
             httpOnly: true,
             secure: isProduction,
@@ -331,13 +338,18 @@ class AuthController{
                 refreshToken: null,
                 isLogin: false
             });
-
+           const isProduction = process.env.NODE_ENV === "production";
             // Clear cookie with matching options
             res.clearCookie("refreshToken", {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: "strict"
+                sameSite: isProduction ? "none" : "lax",
             });
+            res.clearCookie("rublist_auth", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: isProduction ? "none" : "lax",
+        });
 
             res.status(200).json({
                 message: 'Logout successful',
@@ -387,7 +399,6 @@ class AuthController{
     static refreshAccessToken = asynchandler(async (req, res) => {
 
         const refreshToken = req.cookies.refreshToken;
-
         if (!refreshToken) {
             res.status(401);
             throw new Error("No refresh token provided");
@@ -396,7 +407,7 @@ class AuthController{
         let decoded;
 
         try {
-            decoded = jwtToken.verifyToken(refreshToken);
+            decoded = jwtToken.verifyRefreshToken(refreshToken);
         } catch (err) {
             res.status(403);
             throw new Error("Invalid or expired refresh token");
@@ -448,6 +459,12 @@ class AuthController{
             sameSite: isProduction ? "none" : "lax",
             maxAge: 7 * 24 * 60 * 60 * 1000
         });
+        res.cookie("rublist_auth", newAccessToken, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000
+        });
 
         return res.status(200).json({
             success: true,
@@ -458,6 +475,7 @@ class AuthController{
         });
 
     });
+
     static verifyGoogleOtp = asynchandler(async (req, res) => {
 
         const { otp } = req.body;

@@ -34,6 +34,14 @@ class jwtToken {
             audience: "rurblist-users"
         });
     }
+
+       // Verify token
+    static verifyRefreshToken(token) {
+        return jwt.verify(token, process.env.JWT_REFRESH_SECRET, {
+            issuer: "rurblist",
+            audience: "rurblist-users"
+        });
+    }
 }
 
 module.exports = jwtToken;

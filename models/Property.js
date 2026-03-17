@@ -20,7 +20,7 @@ const propertySchema = new mongoose.Schema(
         "Duplex",
         "Land",
         "Commercial",
-        "bedsitter",
+        "Bedsitter",
         "Self_contain",
         "Flat",
         "Boys_quarters",
@@ -152,6 +152,98 @@ const propertySchema = new mongoose.Schema(
         default: 0,
         index: true
     },
+     // NEW: Furnishing Status
+    furnishingStatus: {
+      type: String,
+      enum: ["Furnished", "Unfurnished", "Semi_Furnished"],
+      default: "Unfurnished",
+      index: true
+    },
+
+    // NEW: Amenities
+   // Amenities
+  amenities: [
+    {
+      type: String,
+      enum: [
+        // Internet & Utilities
+        "WiFi",
+        "Cable_TV",
+        "Electricity",
+        "Water_Supply",
+        "Solar_Power",
+        "Generator",
+        "Inverter",
+
+        // Security
+        "Security",
+        "CCTV",
+        "Gated_Community",
+        "Security_Guards",
+        "Smart_Lock",
+        "Fire_Alarm",
+        "Smoke_Detector",
+
+        // Comfort
+        "Air_Conditioning",
+        "Heating",
+        "Ceiling_Fans",
+
+        // Kitchen & Appliances
+        "Refrigerator",
+        "Microwave",
+        "Dishwasher",
+        "Washing_Machine",
+        "Dryer",
+        "Cooker_Oven",
+
+        // Parking & Transport
+        "Parking",
+        "Garage",
+        "EV_Charging",
+
+        // Building Features
+        "Elevator",
+        "Wheelchair_Access",
+        "Storage_Room",
+
+        // Outdoor
+        "Balcony",
+        "Garden",
+        "Terrace",
+        "Rooftop",
+        "Playground",
+
+        // Lifestyle
+        "Swimming_Pool",
+        "Gym",
+        "Spa",
+        "Sauna",
+        "Clubhouse",
+
+        // Work / Study
+        "Study_Room",
+        "Office_Space",
+        "Conference_Room",
+
+        // Entertainment
+        "Cinema_Room",
+        "Game_Room",
+        "Barbecue_Area",
+
+        // Cleaning
+        "Laundry_Room",
+        "Cleaning_Service",
+
+        // Pets
+        "Pet_Friendly",
+
+        // Misc
+        "Guest_Room",
+        "Servant_Quarters"
+      ]
+    }
+  ],
     priorityStartedAt: Date,
     priorityExpiresAt: Date
   },
@@ -173,6 +265,8 @@ propertySchema.index({
   type: 1,
   price: 1,
   bedrooms: 1,
+  amenities: 1, 
+  furnishingStatus: 1,
   "location.state": 1
 });
 

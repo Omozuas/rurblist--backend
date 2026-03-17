@@ -154,7 +154,7 @@ class UserController{
         validateId.validateMongodbId(id);
 
         const user = await User.findById(id)
-            .select("-password -otp -passwordResetToken -__v");
+            .select("-password -otp -passwordResetToken -__v -refreshToken -passwordChangedDate -passwordChangedDate -createdAt -updatedAt -otpExpires");
             // .populate("address")
             // .populate("savedProperties");
 
@@ -165,7 +165,7 @@ class UserController{
 
         res.status(200).json({
             success: true,
-            user
+             data:user
         });
 
     });

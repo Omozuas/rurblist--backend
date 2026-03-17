@@ -51,6 +51,7 @@ Route.delete(
 // Public
 // ===============================
 Route.get("/:id", PropertyController.getSingleProperty);
+Route.get("/agentProperties/:id", PropertyController.getAgentsPropertiesById);
 
 Route.get(
   "/",

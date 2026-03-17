@@ -26,15 +26,14 @@ class PropertyController{
      /api/properties?sort=-views
      /api/properties?sort=-views
      /api/properties?page=2&limit=12
-     /api/properties?
-search=lekki
-&type=Duplex
-&price[gte]=2000000
-&bedrooms[gte]=4
-&location.state=Lagos
-&sort=-price
-&page=1
-&limit=10
+     /api/properties?search=lekki
+     &type=Duplex
+     &price[gte]=2000000
+     &bedrooms[gte]=4
+     &location.state=Lagos
+     &sort=-price
+     &page=1
+     &limit=10
     */
     static searchProperties = async (req, res) => {
 
@@ -48,14 +47,42 @@ search=lekki
             .sort()
             .limitFields()
             .cursorPaginate()
-            .populate(["owner -password","comments"]);
+            .populate(["owner fullName profileImage role phoneNumber","comments"]);
 
         const properties = await features.query.lean();
 
-        res.json({
+         // Get comment counts for all properties
+        const propertyIds = properties.map(p => p._id);
+
+        const commentsCount = await Comment.aggregate([
+            {
+                $match: {
+                    property: { $in: propertyIds }
+                }
+            },
+            {
+                $group: {
+                    _id: "$property",
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const countMap = {};
+        commentsCount.forEach(c => {
+            countMap[c._id.toString()] = c.count;
+        });
+
+        // Attach count to each property
+        const result = properties.map(property => ({
+            ...property,
+            commentsCount: countMap[property._id.toString()] || 0
+        }));
+
+        res.status(200).json({
             success: true,
-            count: properties.length,
-            properties
+            count: result.length,
+            properties: result
         });
     };
 
@@ -456,7 +483,7 @@ search=lekki
 
         res.status(200).json({
             success: true,
-            date: property
+            data: property
         });
     });
 
@@ -491,6 +518,8 @@ search=lekki
             bathrooms,
             size,
             agentFee,
+            amenities,     
+            furnishingStatus,
             paymentFrequency,
             address,
             city,
@@ -499,7 +528,6 @@ search=lekki
             lat,
             lng
         } = req.body;
-
         // ===============================
         // ✅ Basic Required Validation
         // ===============================
@@ -542,7 +570,7 @@ search=lekki
         if (req.files && req.files.length > 0) {
             try {
                 for (const file of req.files) {
-                    const result = await UploadCloud.upload(file.path, "properties");
+                    const result = await UploadCloud.upload(file.path, "rublist/properties");
 
                     uploadedImages.push({
                         url: result.url,
@@ -571,6 +599,7 @@ search=lekki
             description,
             type,
             status,
+            furnishingStatus,
             price,
             bedrooms,
             bathrooms,
@@ -581,6 +610,7 @@ search=lekki
                 lower: true,
                 strict: true
             }),
+            amenities,
             location: {
             address,
             city,
@@ -667,7 +697,7 @@ search=lekki
         res.status(200).json({
             success: true,
             count: result.length,
-            properties: result
+            data: result
         });
     });
     
@@ -815,7 +845,32 @@ search=lekki
             comments
         });
     });
+    
+    static getAgentsPropertiesById = asynchandler(async (req, res) => {
 
+        const agentId = req.params.id;
+
+       validateId.validateMongodbId(agentId);
+
+        const features = new PropertySearch(
+            Property.find({ owner: agentId }),
+            req.query
+        )
+            .filter()
+            .sort()
+            .limitFields()
+            .cursorPaginate()
+            .populate(["owner fullName profileImage role phoneNumber"]);
+
+        const properties = await features.query;
+
+        res.status(200).json({
+            success: true,
+            count: properties.length,
+            data: properties
+        });
+
+    });
 }
 
 module.exports=PropertyController;

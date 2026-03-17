@@ -35,20 +35,21 @@ class StoreImages {
    */
   static fileFilter(req, file, cb) {
 
-    const allowedTypes = /jpg|jpeg|png|webp|gif/;
+  const allowedExt = /jpg|jpeg|png|webp|gif/;
+  const allowedMime = /image\/(jpeg|jpg|png|webp|gif)/;
 
-    const ext = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
+  const ext = allowedExt.test(
+    path.extname(file.originalname).toLowerCase()
+  );
 
-    const mime = allowedTypes.test(file.mimetype);
+  const mime = allowedMime.test(file.mimetype);
 
-    if (!ext || !mime) {
-      return cb(new Error("Only image files are allowed"));
-    }
-
-    cb(null, true);
+  if (!ext || !mime) {
+    return cb(new Error("Only image files are allowed"));
   }
+
+  cb(null, true);
+}
 
   /**
    * Base uploader

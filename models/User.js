@@ -59,6 +59,10 @@ var userSchema= new mongoose.Schema({
         type:String,
         default:'none',
     },
+    refreshToken:{
+        type:String,
+        default:'none',
+    },
     otpExpires:{
         type:Date,
         default: () => new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
