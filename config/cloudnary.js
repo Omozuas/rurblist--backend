@@ -1,4 +1,5 @@
-const cloudinary = require("cloudinary").v2;
+const cloudinary = require('cloudinary').v2;
+const path = require('path');
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -7,51 +8,51 @@ cloudinary.config({
 });
 
 class UploadCloud {
-
-  /**
-   * Upload file to cloudinary
-   * @param {String} file - file path or base64
-   * @param {String} folder - cloudinary folder
-   */
-  static async upload(file, folder = "rurblist") {
+  static async upload(filePath, folder = 'rurblist') {
     try {
-      const result = await cloudinary.uploader.upload(file, {
-        resource_type: "auto",
+      const ext = path.extname(filePath).toLowerCase();
+
+      const isImage = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext);
+
+      const result = await cloudinary.uploader.upload(filePath, {
         folder,
-        quality: "auto",
-        fetch_format: "auto"
+        resource_type: isImage ? 'image' : 'raw', // 🔥 prevents PDF → PNG issue
+
+        ...(isImage && {
+          quality: 'auto',
+          fetch_format: 'auto',
+        }),
+        // 🔥 FIX FOR PDF ACCESS
+        access_mode: 'public',
+        type: 'upload',
       });
 
       return {
         url: result.secure_url,
         public_id: result.public_id,
-        asset_id: result.asset_id,
-        format: result.format,
-        width: result.width,
-        height: result.height
+        resource_type: result.resource_type,
       };
-
     } catch (error) {
-      throw new Error(`Cloudinary Upload Error: ${error.message}`);
+      throw new Error(`Cloudinary Upload Error: ${error.message || JSON.stringify(error)}`);
     }
   }
 
-  /**
-   * Delete file from cloudinary
-   * @param {String} publicId
-   */
-  static async delete(publicId) {
+  static async delete(publicId, resourceType = 'image') {
     try {
-      const result = await cloudinary.uploader.destroy(publicId);
+      const result = await cloudinary.uploader.destroy(publicId, {
+        resource_type: resourceType,
+      });
 
-      return {
-        result: result.result,
-        public_id: publicId
-      };
-
+      return result;
     } catch (error) {
-      throw new Error(`Cloudinary Delete Error: ${error.message}`);
+      throw new Error(`Cloudinary Delete Error: ${error.message || JSON.stringify(error)}`);
     }
+  }
+  static getDownloadUrl(publicId) {
+    return cloudinary.url(publicId, {
+      resource_type: 'raw',
+      flags: 'attachment',
+    });
   }
 }
 

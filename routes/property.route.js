@@ -1,26 +1,26 @@
-const express = require("express");
+const express = require('express');
 const Route = express.Router();
-const PropertyController = require("../controllers/propertyController");
-const Checker = require("../middlewares/checker");
-const Upload = require("../helper/multer");
+const PropertyController = require('../controllers/propertyController');
+const Checker = require('../middlewares/checker');
+const Upload = require('../helper/multer');
 
 // ===============================
 // CREATE PROPERTY
 // Only Agent, Landlord, Admin
 // ===============================
 Route.post(
-  "/",
+  '/',
   Checker.authmiddleware,
-  Checker.allowRoles("Agent", "Landlord", "Admin"),
-  Upload.multiple("images"),
-  PropertyController.createProperty
+  Checker.allowRoles('Agent', 'Landlord', 'Admin'),
+  Upload.multiple('images'),
+  PropertyController.createProperty,
 );
 
 Route.get(
-  "/my-properties",
+  '/my-properties',
   Checker.authmiddleware,
-  Checker.allowRoles("Agent", "Landlord", "Admin"),
-  PropertyController.getMyProperties
+  Checker.allowRoles('Agent', 'Landlord', 'Admin'),
+  PropertyController.getMyProperties,
 );
 
 // ===============================
@@ -28,11 +28,11 @@ Route.get(
 // Only Agent, Landlord, Admin
 // ===============================
 Route.patch(
-  "/:id",
+  '/:id',
   Checker.authmiddleware,
-  Checker.allowRoles("Agent", "Landlord", "Admin"),
-  Upload.multiple("images"),
-  PropertyController.updateProperty
+  Checker.allowRoles('Agent', 'Landlord', 'Admin'),
+  Upload.multiple('images'),
+  PropertyController.updateProperty,
 );
 
 // ===============================
@@ -40,43 +40,38 @@ Route.patch(
 // Only Agent, Landlord, Admin
 // ===============================
 Route.delete(
-  "/:id",
+  '/:id',
   Checker.authmiddleware,
-  Checker.allowRoles("Agent", "Landlord", "Admin"),
-  PropertyController.deleteProperty
+  Checker.allowRoles('Agent', 'Landlord', 'Admin'),
+  PropertyController.deleteProperty,
 );
 
 // ===============================
 // GET SINGLE PROPERTY
 // Public
 // ===============================
-Route.get("/:id", PropertyController.getSingleProperty);
-Route.get("/agentProperties/:id", PropertyController.getAgentsPropertiesById);
+Route.get('/:id', PropertyController.getSingleProperty);
+Route.get('/agentProperties/:id', PropertyController.getAgentsPropertiesById);
 
-Route.get(
-  "/",
-  Checker.authmiddleware,
-  PropertyController.searchProperties
-);
+Route.get('/', Checker.authmiddleware, PropertyController.searchProperties);
 
 // ===============================
 // LIKE / UNLIKE
 // ===============================
-Route.patch("/:id/like", Checker.authmiddleware, PropertyController.likeProperty);
-Route.patch("/:id/unlike", Checker.authmiddleware, PropertyController.unlikeProperty);
+Route.patch('/:id/like', Checker.authmiddleware, PropertyController.likeProperty);
+Route.patch('/:id/unlike', Checker.authmiddleware, PropertyController.unlikeProperty);
 
 // ===============================
 // COMMENTS
 // ===============================
-Route.post("/:id/comment", Checker.authmiddleware, PropertyController.addComment);
-Route.post("/comment/:commentId/reply", Checker.authmiddleware, PropertyController.addReply);
+Route.post('/:id/comment', Checker.authmiddleware, PropertyController.addComment);
+Route.post('/comment/:commentId/reply', Checker.authmiddleware, PropertyController.addReply);
 
-Route.get("/slug/:slug",Checker.authmiddleware, PropertyController.getPropertyBySlug);
+Route.get('/slug/:slug', Checker.authmiddleware, PropertyController.getPropertyBySlug);
 Route.get(
-  "/:propertyId/comments",
+  '/:propertyId/comments',
   Checker.authmiddleware,
-  PropertyController.getCommentsByProperty
+  PropertyController.getCommentsByProperty,
 );
-
 
 module.exports = Route;

@@ -17,14 +17,14 @@ class PropertySearch {
 
       this.query = this.query.find({
         $or: [
-          { title: { $regex: keyword, $options: "i" } },
-          { description: { $regex: keyword, $options: "i" } },
-          { "location.city": { $regex: keyword, $options: "i" } },
-          { "location.state": { $regex: keyword, $options: "i" } }
-        ]
+          { title: { $regex: keyword, $options: 'i' } },
+          { description: { $regex: keyword, $options: 'i' } },
+          { 'location.city': { $regex: keyword, $options: 'i' } },
+          { 'location.state': { $regex: keyword, $options: 'i' } },
+        ],
       });
     }
-     console.log(`search:${this.query}`);
+    console.log(`search:${this.query}`);
     return this;
   }
 
@@ -32,71 +32,66 @@ class PropertySearch {
    * ADVANCED FILTERING
    * price[gte]=100000
    */
-    filter() {
-      const queryObj = { ...this.queryString };
+  filter() {
+    const queryObj = { ...this.queryString };
 
-      const excluded = [
-        "page",
-        "limit",
-        "sort",
-        "fields",
-        "search",
-        "cursor",
-        "lat",
-        "lng",
-        "radius",
-        "minPrice",
-        "maxPrice"
-      ];
+    const excluded = [
+      'page',
+      'limit',
+      'sort',
+      'fields',
+      'search',
+      'cursor',
+      'lat',
+      'lng',
+      'radius',
+      'minPrice',
+      'maxPrice',
+    ];
 
-      excluded.forEach(el => delete queryObj[el]);
+    excluded.forEach((el) => delete queryObj[el]);
 
-      // Handle minPrice / maxPrice
-      if (this.queryString.minPrice || this.queryString.maxPrice) {
-        queryObj.price = {};
+    // Handle minPrice / maxPrice
+    if (this.queryString.minPrice || this.queryString.maxPrice) {
+      queryObj.price = {};
 
-        if (this.queryString.minPrice) {
-          queryObj.price.$gte = Number(this.queryString.minPrice);
-        }
-
-        if (this.queryString.maxPrice) {
-          queryObj.price.$lte = Number(this.queryString.maxPrice);
-        }
+      if (this.queryString.minPrice) {
+        queryObj.price.$gte = Number(this.queryString.minPrice);
       }
 
-      let queryStr = JSON.stringify(queryObj);
-
-      // convert gte -> $gte etc
-      queryStr = queryStr.replace(
-         /\b(?<!\$)(gt|gte|lt|lte|in)\b/g,
-        match => `$${match}`
-      );
-
-      let parsedQuery = JSON.parse(queryStr);
-
-      // numeric fields
-      const numericFields = ["price", "bedrooms", "bathrooms", "size", "agentFee"];
-
-      numericFields.forEach(field => {
-        if (parsedQuery[field]) {
-
-          if (typeof parsedQuery[field] === "object") {
-            Object.keys(parsedQuery[field]).forEach(operator => {
-              parsedQuery[field][operator] = Number(parsedQuery[field][operator]);
-            });
-          } else {
-            parsedQuery[field] = Number(parsedQuery[field]);
-          }
-
-        }
-      });
-
-      this.query = this.query.find(parsedQuery);
-
-      console.log(`filter:${this.query}`);
-
-      return this;
+      if (this.queryString.maxPrice) {
+        queryObj.price.$lte = Number(this.queryString.maxPrice);
+      }
     }
+
+    let queryStr = JSON.stringify(queryObj);
+
+    // convert gte -> $gte etc
+    queryStr = queryStr.replace(/\b(?<!\$)(gt|gte|lt|lte|in)\b/g, (match) => `$${match}`);
+
+    let parsedQuery = JSON.parse(queryStr);
+
+    // numeric fields
+    const numericFields = ['price', 'bedrooms', 'bathrooms', 'size', 'agentFee'];
+
+    numericFields.forEach((field) => {
+      if (parsedQuery[field]) {
+        if (typeof parsedQuery[field] === 'object') {
+          Object.keys(parsedQuery[field]).forEach((operator) => {
+            parsedQuery[field][operator] = Number(parsedQuery[field][operator]);
+          });
+        } else {
+          parsedQuery[field] = Number(parsedQuery[field]);
+        }
+      }
+    });
+
+    this.query = this.query.find(parsedQuery);
+
+    console.log(`filter:${this.query}`);
+
+    return this;
+  }
 
   /**
    * GEO RADIUS SEARCH
@@ -108,17 +103,14 @@ class PropertySearch {
       const earthRadius = 6378.1; // km
 
       this.query = this.query.find({
-        "location.coordinates": {
+        'location.coordinates': {
           $geoWithin: {
-            $centerSphere: [
-              [Number(lng), Number(lat)],
-              Number(radius) / earthRadius
-            ]
-          }
-        }
+            $centerSphere: [[Number(lng), Number(lat)], Number(radius) / earthRadius],
+          },
+        },
       });
     }
- console.log(`geo:${this.query}`);
+    console.log(`geo:${this.query}`);
     return this;
   }
 
@@ -126,17 +118,17 @@ class PropertySearch {
    * SORTING
    */
   sort() {
-    let sortOption = "-createdAt";
+    let sortOption = '-createdAt';
 
     if (this.queryString.sort) {
-      sortOption = this.queryString.sort.split(",").join(" ");
+      sortOption = this.queryString.sort.split(',').join(' ');
     } else {
       // Default: priority first, then trending, then newest
-      sortOption = "-priorityLevel -trendingScore -createdAt";
+      sortOption = '-priorityLevel -trendingScore -createdAt';
     }
 
     this.query = this.query.sort(sortOption);
-console.log(`sort:${this.query}`);
+    console.log(`sort:${this.query}`);
     return this;
   }
 
@@ -145,12 +137,12 @@ console.log(`sort:${this.query}`);
    */
   limitFields() {
     if (this.queryString.fields) {
-      const fields = this.queryString.fields.split(",").join(" ");
+      const fields = this.queryString.fields.split(',').join(' ');
       this.query = this.query.select(fields);
     } else {
-      this.query = this.query.select("-__v");
+      this.query = this.query.select('-__v');
     }
-console.log(`limited:${this.query}`);
+    console.log(`limited:${this.query}`);
     return this;
   }
 
@@ -160,14 +152,34 @@ console.log(`limited:${this.query}`);
   cursorPaginate() {
     const limit = parseInt(this.queryString.limit) || 12;
 
-    if (this.queryString.cursor) {
-      this.query = this.query.find({
-        _id: { $gt: this.queryString.cursor }
-      });
+    const sort = this.queryString.sort || '-createdAt';
+    const sortField = sort.replace('-', '');
+    const isDesc = sort.startsWith('-');
+
+    const cursor = this.queryString.cursor;
+
+    if (cursor) {
+      try {
+        const parsed = JSON.parse(cursor);
+
+        this.query = this.query.find({
+          $or: [
+            {
+              [sortField]: isDesc ? { $lt: parsed.value } : { $gt: parsed.value },
+            },
+            {
+              [sortField]: parsed.value,
+              _id: { $gt: parsed.id },
+            },
+          ],
+        });
+      } catch (err) {
+        console.error('Invalid cursor:', cursor);
+      }
     }
 
-    this.query = this.query.limit(limit);
-console.log(`cursor:${this.query}`);
+    this.query = this.query.sort(sort).limit(limit);
+    console.log(`cursorPaginate:${this.query}`);
     return this;
   }
 
@@ -181,7 +193,7 @@ console.log(`cursor:${this.query}`);
     const skip = (page - 1) * limit;
 
     this.query = this.query.skip(skip).limit(limit);
-console.log(`psgenated:${this.query}`);
+    console.log(`psgenated:${this.query}`);
     return this;
   }
 
@@ -190,23 +202,20 @@ console.log(`psgenated:${this.query}`);
    */
   populate(fields = []) {
     fields.forEach((field) => {
-
-      if (typeof field === "string") {
-        const parts = field.split(" ");
+      if (typeof field === 'string') {
+        const parts = field.split(' ');
         const path = parts[0];
-        const select = parts.slice(1).join(" ");
+        const select = parts.slice(1).join(' ');
 
         this.query = this.query.populate({
           path,
-          select
+          select,
         });
-
       } else {
         this.query = this.query.populate(field);
       }
-
     });
-console.log(`populate:${this.query}`);
+    console.log(`populate:${this.query}`);
     return this;
   }
 }
