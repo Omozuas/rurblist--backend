@@ -990,6 +990,76 @@ Follow us for updates and property tips!
 
     return await SendEmails.transporter.sendMail(mailOptions);
   };
+
+  static sendPlanActivationEmail = async (email, firstName, plan) => {
+    const currentYear = new Date().getFullYear();
+
+    const mailOptions = {
+      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      to: email,
+      subject: `Your ${plan.name} Plan is Now Active 🚀`,
+
+      text: `Hello ${firstName}, your ${plan.name} plan has been activated successfully.`,
+
+      html: `
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial; background:#f9f9f9; padding:20px;">
+    <table style="max-width:600px;margin:auto;background:#fff;padding:30px;border-radius:8px">
+
+      <h2 style="color:#ec6c10;">Hello ${firstName},</h2>
+
+      <p>
+        Your <strong>${plan.name}</strong> plan is now <strong>active</strong> 🎉
+      </p>
+
+      <div style="background:#e8f5e9;padding:15px;border-left:5px solid #2e7d32;margin:20px 0;">
+        🚀 You can now proceed with property purchases and enjoy premium verification features.
+      </div>
+
+      <h3>📦 Plan Details</h3>
+      <ul>
+        <li><strong>Plan:</strong> ${plan.name}</li>
+        <li><strong>Price:</strong> ${plan.amount} ${plan.currency || 'NGN'}</li>
+        <li><strong>Activated On:</strong> ${new Date().toDateString()}</li>
+      </ul>
+
+      <h3>✨ What You Get</h3>
+      <ul>
+        ${
+          plan.features?.map((feature) => `<li>✔️ ${feature}</li>`).join('') ||
+          '<li>No features listed</li>'
+        }
+      </ul>
+
+      <div style="background:#fff3e0;padding:15px;border-left:5px solid #ec6c10;margin:20px 0;">
+        💡 You won’t need to pay again for this plan when purchasing properties.
+      </div>
+
+      <p style="margin:25px 0;">
+        <a href="${process.env.CLIENT_URL}/properties" 
+        style="background:#ec6c10;color:#fff;padding:12px 18px;text-decoration:none;border-radius:5px;">
+        Browse Properties
+        </a>
+      </p>
+
+      <p>
+        If you have any questions, feel free to reach out to our support team.
+      </p>
+
+      <p><strong>Rurblist Team</strong></p>
+
+      <hr/>
+      <p style="font-size:12px;color:#777;">© ${currentYear} Rurblist</p>
+
+    </table>
+    </body>
+    </html>
+    `,
+    };
+
+    return await SendEmails.transporter.sendMail(mailOptions);
+  };
 }
 
 module.exports = SendEmails;

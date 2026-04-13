@@ -7,11 +7,14 @@ var userSchema = new mongoose.Schema(
     fullName: {
       type: String,
       required: true,
+      trim: true,
     },
     email: {
       type: String,
       required: true,
       unique: true,
+      trim: true,
+      lowercase: true,
     },
     username: {
       type: String,
@@ -24,7 +27,7 @@ var userSchema = new mongoose.Schema(
     googleId: {
       type: String,
       unique: true,
-      required: false,
+      sparse: true,
     },
     profileImage: {
       url: {
@@ -38,78 +41,59 @@ var userSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: false,
       unique: true,
+      sparse: true,
     },
     password: {
       type: String,
       required: true,
     },
-    savedProperties: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Property', // Reference to Property schema
-      },
-    ],
-    role: {
-      type: String,
-      default: 'Home_Seeker',
-      enum: ['Home_Seeker', 'Admin', 'Agent', 'Landlord'],
+    roles: {
+      type: [String],
+      enum: ['Home_Seeker', 'Agent', 'Landlord', 'Developer', 'Admin'],
+      default: ['Home_Seeker'],
+      index: true,
     },
     otp: {
       type: String,
-      default: 'none',
+      default: null,
     },
-    isAgent: {
-      type: Boolean,
-      default: false,
-    },
+
     refreshToken: {
       type: String,
-      default: 'none',
+      default: null,
     },
     otpExpires: {
       type: Date,
-      default: () => new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      default: null,
     },
     isEmailVerified: {
       type: Boolean,
       default: false,
     },
-    verificationStatus: {
-      type: String,
-      enum: ['unverified', 'nin_verified', 'cac_verified', 'premium_verified', 'pending'],
-      default: 'unverified',
-    },
+
     isLogin: {
       type: Boolean,
       default: false,
     },
-    address: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Address',
-      require: false,
-    },
+
     isBlocked: {
       type: Boolean,
       default: false,
     },
-    passwordChangedDate: {
-      type: Date,
-      required: false, // Not required initially
-    },
-    passwordResetExpires: {
-      type: Date,
-      required: false, // Not required initially
-    },
-    passwordResetToken: {
-      type: String,
-      required: false, // Not required initially
-    },
+    passwordChangedDate: Date,
+    passwordResetExpires: Date,
+    passwordResetToken: String,
   },
   { timestamps: true },
 );
-
+// ensure at least one role
+userSchema.pre('save', function (next) {
+  if (!this.roles || this.roles.length === 0) {
+    this.roles = ['Home_Seeker'];
+  }
+  next();
+});
 //Export the model
 const User = mongoose.model('User', userSchema);
 module.exports = User;

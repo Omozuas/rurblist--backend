@@ -54,11 +54,6 @@ Route.post(
 // ===============================
 // DELETE AGENT
 // ===============================
-Route.delete(
-  '/me',
-  Checker.authmiddleware,
-  Checker.allowRoles('Admin', 'Agent'),
-  AgentController.deleteAgent,
-);
+Route.delete('/me', Checker.authmiddleware, AgentController.deleteAgent);
 
 module.exports = Route;

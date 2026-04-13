@@ -6,7 +6,6 @@ const Upload = require('../helper/multer');
 
 // ===============================
 // CREATE PROPERTY
-// Only Agent, Landlord, Admin
 // ===============================
 Route.post(
   '/',
@@ -16,6 +15,9 @@ Route.post(
   PropertyController.createProperty,
 );
 
+// ===============================
+// MY PROPERTIES
+// ===============================
 Route.get(
   '/my-properties',
   Checker.authmiddleware,
@@ -24,8 +26,32 @@ Route.get(
 );
 
 // ===============================
+// AGENT PROPERTIES (PUBLIC)
+// ===============================
+Route.get('/agent-properties/:id', PropertyController.getAgentsPropertiesById);
+
+// ===============================
+// SEARCH (PUBLIC)
+// ===============================
+Route.get('/', PropertyController.searchProperties);
+
+// ===============================
+// SLUG (PUBLIC)
+// ===============================
+Route.get('/slug/:slug', PropertyController.getPropertyBySlug);
+
+// ===============================
+// COMMENTS (READ PUBLIC)
+// ===============================
+Route.get('/:propertyId/comments', PropertyController.getCommentsByProperty);
+
+// ===============================
+// SINGLE PROPERTY (PUBLIC)
+// ===============================
+Route.get('/:id', PropertyController.getSingleProperty);
+
+// ===============================
 // UPDATE PROPERTY
-// Only Agent, Landlord, Admin
 // ===============================
 Route.patch(
   '/:id',
@@ -37,7 +63,6 @@ Route.patch(
 
 // ===============================
 // DELETE PROPERTY
-// Only Agent, Landlord, Admin
 // ===============================
 Route.delete(
   '/:id',
@@ -47,31 +72,15 @@ Route.delete(
 );
 
 // ===============================
-// GET SINGLE PROPERTY
-// Public
-// ===============================
-Route.get('/:id', PropertyController.getSingleProperty);
-Route.get('/agentProperties/:id', PropertyController.getAgentsPropertiesById);
-
-Route.get('/', Checker.authmiddleware, PropertyController.searchProperties);
-
-// ===============================
 // LIKE / UNLIKE
 // ===============================
 Route.patch('/:id/like', Checker.authmiddleware, PropertyController.likeProperty);
 Route.patch('/:id/unlike', Checker.authmiddleware, PropertyController.unlikeProperty);
 
 // ===============================
-// COMMENTS
+// COMMENTS (WRITE)
 // ===============================
 Route.post('/:id/comment', Checker.authmiddleware, PropertyController.addComment);
 Route.post('/comment/:commentId/reply', Checker.authmiddleware, PropertyController.addReply);
-
-Route.get('/slug/:slug', Checker.authmiddleware, PropertyController.getPropertyBySlug);
-Route.get(
-  '/:propertyId/comments',
-  Checker.authmiddleware,
-  PropertyController.getCommentsByProperty,
-);
 
 module.exports = Route;

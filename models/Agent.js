@@ -1,45 +1,65 @@
-// src/models/Agent.js
+// models/Agent.js
 const mongoose = require('mongoose');
 
 const agentSchema = new mongoose.Schema(
   {
-    // PERSONAL INFO
+    // 🔗 LINK TO USER
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      unique: true, // ✅ one agent profile per user
+      index: true,
+    },
+
+    // 👤 PERSONAL INFO (collected when becoming agent)
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
     dateOfBirth: Date,
     city: String,
     address: String,
     nationality: { type: String, default: 'Nigeria' },
-    user: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-      index: true, // 🚀 performance boost
-    },
 
-    // KYC
-    nin: String,
-    ninSlipUrl: {
-      url: { type: String, required: true },
-      public_id: { type: String, required: true },
-    },
-    selfieUrl: {
-      url: { type: String, required: true },
-      public_id: { type: String, required: true },
-    },
-
-    // BUSINESS INFO
-    cacNumber: String,
-    cacDocumentUrl: {
-      url: { type: String, required: true },
-      public_id: { type: String, required: true },
-    },
-    bvn: String,
-    companyName: String,
+    // 🏢 BUSINESS INFO (optional at first)
+    cacNumber: { type: String, default: null },
+    companyName: { type: String, default: null },
     yearsOfExperience: Number,
     description: String,
 
-    // VERIFICATION STATUS
+    // 🔥 KYC STATUS FLOW
+    status: {
+      type: String,
+      enum: ['not_submitted', 'pending', 'under_review', 'approved', 'rejected'],
+      default: 'not_submitted',
+    },
+
+    // 🆔 KYC DATA (OPTIONAL INITIALLY)
+    nin: { type: String, default: null },
+
+    ninSlipUrl: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    selfieUrl: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    cacDocumentUrl: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    bvn: { type: String, default: null },
+
+    // ✅ AGREEMENT (still required at creation)
+    isAgreement: {
+      type: Boolean,
+      default: false,
+    },
+
+    // 🔍 VERIFICATION FLAGS
     kycStatus: {
       ninVerified: { type: Boolean, default: false },
       cacVerified: { type: Boolean, default: false },
@@ -47,27 +67,19 @@ const agentSchema = new mongoose.Schema(
       livenessVerified: { type: Boolean, default: false },
     },
 
-    status: {
-      type: String,
-      enum: ['pending', 'under_review', 'approved', 'rejected'],
-      default: 'pending',
-    },
-    isAgreement: {
-      type: Boolean,
-      required: true,
-      validate: {
-        validator: function (v) {
-          return v === true;
-        },
-        message: 'Agreement must be accepted',
-      },
-    },
+    // 📦 RAW VERIFICATION RESPONSES
     verificationData: {
-      nin: Object,
-      cac: Object,
-      liveness: Object,
-      bvn: Object,
+      nin: { type: Object, default: null },
+      cac: { type: Object, default: null },
+      liveness: { type: Object, default: null },
+      bvn: { type: Object, default: null },
     },
+    savedProperties: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Property',
+      },
+    ],
   },
   { timestamps: true },
 );

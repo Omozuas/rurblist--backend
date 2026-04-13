@@ -96,7 +96,7 @@ const propertySchema = new mongoose.Schema(
 
     owner: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'Agent',
       required: true,
       index: true,
     },
@@ -142,6 +142,12 @@ const propertySchema = new mongoose.Schema(
     isAvailable: {
       type: Boolean,
       default: true,
+      index: true,
+    },
+
+    isSold: {
+      type: Boolean,
+      default: false,
       index: true,
     },
 
@@ -252,6 +258,10 @@ const propertySchema = new mongoose.Schema(
         ],
       },
     ],
+    commentsCount: {
+      type: Number,
+      default: 0,
+    },
     priorityStartedAt: Date,
     priorityExpiresAt: Date,
   },

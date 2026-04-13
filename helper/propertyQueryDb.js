@@ -150,7 +150,7 @@ class PropertySearch {
    * CURSOR PAGINATION (FAST)
    */
   cursorPaginate() {
-    const limit = parseInt(this.queryString.limit) || 12;
+    const limit = Math.min(parseInt(this.queryString.limit) || 12, 50);
 
     const sort = this.queryString.sort || '-createdAt';
     const sortField = sort.replace('-', '');

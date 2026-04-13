@@ -1,37 +1,72 @@
 const Route = require('express').Router();
-const errorHandler=require('../middlewares/errorhandler');
 const userController = require('../controllers/userController');
-const checker=require('../middlewares/checker'); 
-const Upload  = require('../helper/multer');
-const rateLimit = require("express-rate-limit");
+const checker = require('../middlewares/checker');
+const Upload = require('../helper/multer');
+const rateLimit = require('express-rate-limit');
 
 const passwordChangeLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 5,
   message: {
     success: false,
-    message: "Too many password change attempts. Try again later."
-  }
+    message: 'Too many password change attempts. Try again later.',
+  },
 });
 
-module.exports = passwordChangeLimiter;
+// ✅ ADMIN
+Route.get('/', checker.authmiddleware, checker.allowRoles('Admin'), userController.getUsers);
 
+// ✅ CURRENT USER
+Route.get('/me', checker.authmiddleware, userController.getCurrentUser);
+Route.get('/saved', checker.authmiddleware, userController.getSavedProperties);
 
-Route.get("/", checker.authmiddleware,checker.allowRoles("Admin"),userController.getUsers);
-Route.get("/me", checker.authmiddleware,userController.getCurrentUser);
-Route.get("/saved",checker.authmiddleware,userController.getSavedProperties);
-Route.get("/:id", checker.authmiddleware,userController.getUserbyId);
+// ✅ UPDATE
+Route.put(
+  '/edit-user',
+  checker.authmiddleware,
+  Upload.fields([
+    { name: 'image', maxCount: 1 }, // profile image
+    { name: 'ninSlip', maxCount: 1 }, // KYC
+    { name: 'selfie', maxCount: 1 }, // KYC
+  ]),
+  userController.updateUserbyId,
+);
 
+// ✅ PASSWORD
+Route.patch(
+  '/change-password',
+  checker.authmiddleware,
+  passwordChangeLimiter,
+  userController.updateUserPasswordbyId,
+);
 
-Route.put('/edit-user',checker.authmiddleware,Upload.single('image'),userController.updateUserbyId);
-Route.patch('/block-user/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.blockUserbyId);
-Route.patch('/unblock-user/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.unblockUserbyId);
-Route.patch('/change-password',checker.authmiddleware,passwordChangeLimiter,userController.updateUserPasswordbyId);
-Route.patch("/:propertyId/save",checker.authmiddleware,userController.toggleSaveProperty);
-Route.delete('/me',checker.authmiddleware,userController.deleteMyAccount);
-Route.delete('/:id',checker.authmiddleware,checker.allowRoles("Admin"),userController.deleteUserbyId);
+// ✅ SAVE PROPERTY
+Route.patch('/:propertyId/save', checker.authmiddleware, userController.toggleSaveProperty);
 
-Route.use(errorHandler.notfound);
-Route.use(errorHandler.errorHandler);
+// ✅ ADMIN ACTIONS
+Route.patch(
+  '/block-user/:id',
+  checker.authmiddleware,
+  checker.allowRoles('Admin'),
+  userController.blockUserbyId,
+);
+Route.patch(
+  '/unblock-user/:id',
+  checker.authmiddleware,
+  checker.allowRoles('Admin'),
+  userController.unblockUserbyId,
+);
+
+// ✅ DELETE
+Route.delete('/me', checker.authmiddleware, userController.deleteMyAccount);
+Route.delete(
+  '/:id',
+  checker.authmiddleware,
+  checker.allowRoles('Admin'),
+  userController.deleteUserbyId,
+);
+
+// ❗ ALWAYS LAST
+Route.get('/:id', checker.authmiddleware, userController.getUserbyId);
 
 module.exports = Route;

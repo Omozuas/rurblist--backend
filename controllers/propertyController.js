@@ -2,6 +2,7 @@
 const asynchandler = require('express-async-handler');
 const PropertySearch = require('../helper/propertyQueryDb');
 const Property = require('../models/Property');
+const Agent = require('../models/Agent');
 const Comment = require('../models/Comment');
 const validateId = require('../helper/validatemongodb');
 const UploadCloud = require('../config/cloudnary');
@@ -37,32 +38,39 @@ class PropertyController {
      &limit=10
     */
   static searchProperties = async (req, res) => {
-    const features = new PropertySearch(Property.find({ isAvailable: true }), req.query)
+    const baseQuery = {
+      isAvailable: true,
+      verificationStatus: 'verified',
+    };
+
+    const features = new PropertySearch(Property.find(baseQuery), req.query)
       .search()
       .filter()
       .geoSearch()
       .sort()
       .limitFields()
       .cursorPaginate()
-      .populate(['owner fullName profileImage role phoneNumber', 'comments']);
+      .populate([
+        {
+          path: 'owner',
+          populate: {
+            path: 'user',
+            select: 'fullName profileImage roles phoneNumber',
+          },
+        },
+        {
+          path: 'comments',
+        },
+      ]);
 
     const properties = await features.query.lean();
 
-    // Get comment counts for all properties
+    // 🔥 COMMENT COUNT (temporary)
     const propertyIds = properties.map((p) => p._id);
 
     const commentsCount = await Comment.aggregate([
-      {
-        $match: {
-          property: { $in: propertyIds },
-        },
-      },
-      {
-        $group: {
-          _id: '$property',
-          count: { $sum: 1 },
-        },
-      },
+      { $match: { property: { $in: propertyIds } } },
+      { $group: { _id: '$property', count: { $sum: 1 } } },
     ]);
 
     const countMap = {};
@@ -70,14 +78,14 @@ class PropertyController {
       countMap[c._id.toString()] = c.count;
     });
 
-    // Attach count to each property
     const result = properties.map((property) => ({
       ...property,
       commentsCount: countMap[property._id.toString()] || 0,
     }));
-    // ✅ cursor generation
+
+    // ✅ cursor fix
     const sort = req.query.sort || '-createdAt';
-    const sortField = sort.replace('-', '');
+    const sortField = sort.split(',')[0].replace('-', '');
 
     const lastItem = result[result.length - 1];
 
@@ -107,9 +115,20 @@ class PropertyController {
       res.status(404);
       throw new Error('Property not found');
     }
+    // 🔥 Get agent
+    const agent = await Agent.findOne({ user: req.user._id });
 
-    // Authorization
-    if (property.owner.toString() !== req.user.id && req.user.role !== 'Admin') {
+    if (!agent) {
+      res.status(403);
+      throw new Error('You are not an agent');
+    }
+    if (agent.status !== 'approved') {
+      res.status(403);
+      throw new Error('Agent not approved');
+    }
+
+    // 🔐 Authorization
+    if (property.owner.toString() !== agent._id.toString() && !req.user.roles.includes('Admin')) {
       res.status(403);
       throw new Error('Not authorized');
     }
@@ -120,10 +139,14 @@ class PropertyController {
             =====================================
         */
     if (removeImages && Array.isArray(removeImages)) {
-      for (const publicId of removeImages) {
-        await UploadCloud.delete(publicId);
+      const existingPublicIds = property.images.map((img) => img.public_id);
 
-        property.images = property.images.filter((img) => img.public_id !== publicId);
+      for (const publicId of removeImages) {
+        if (existingPublicIds.includes(publicId)) {
+          await UploadCloud.delete(publicId);
+
+          property.images = property.images.filter((img) => img.public_id !== publicId);
+        }
       }
     }
 
@@ -141,7 +164,7 @@ class PropertyController {
           public_id: result.public_id,
         });
 
-        fs.unlinkSync(file.path); // remove local file
+        await fs.promises.unlink(file.path);
       }
     }
 
@@ -150,10 +173,27 @@ class PropertyController {
             🔥 3️⃣ UPDATE OTHER PROPERTY FIELDS
             =====================================
         */
+    // 🔒 SAFE UPDATE
+    const allowedFields = [
+      'title',
+      'description',
+      'price',
+      'bedrooms',
+      'bathrooms',
+      'type',
+      'status',
+      'size',
+      'agentFee',
+      'inspectionFee',
+      'paymentFrequency',
+      'furnishingStatus',
+      'amenities',
+      'location',
+    ];
 
-    Object.keys(req.body).forEach((key) => {
-      if (key !== 'removeImages') {
-        property[key] = req.body[key];
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        property[field] = req.body[field];
       }
     });
 
@@ -162,7 +202,7 @@ class PropertyController {
     res.status(200).json({
       success: true,
       message: 'Property updated successfully',
-      property,
+      data: property,
     });
   });
 
@@ -175,9 +215,21 @@ class PropertyController {
       res.status(404);
       throw new Error('Property not found');
     }
+    const agent = await Agent.findOne({ user: req.user._id });
+    const isAdmin = req.user.roles.includes('Admin');
 
-    // Authorization
-    if (property.owner.toString() !== req.user.id && req.user.role !== 'Admin') {
+    if (!agent && !isAdmin) {
+      res.status(403);
+      throw new Error('Not authorized');
+    }
+
+    // if (agent && agent.status !== 'approved') {
+    //   res.status(403);
+    //   throw new Error('Agent not approved');
+    // }
+
+    // 🔐 Authorization
+    if (!isAdmin && property.owner.toString() !== agent._id.toString()) {
       res.status(403);
       throw new Error('Not authorized to delete this property');
     }
@@ -207,8 +259,8 @@ class PropertyController {
 
   static unlikeProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
-    const userId = req.user.id;
-
+    const userId = req.user._id;
+    validateId.validateMongodbId(id);
     const property = await Property.findById(id);
 
     if (!property) {
@@ -216,11 +268,12 @@ class PropertyController {
       throw new Error('Property not found');
     }
 
-    const alreadyLiked = property.likes.includes(userId);
-    const alreadyUnliked = property.unlikes.includes(userId);
+    const hasLiked = property.likes.some((uid) => uid.toString() === userId.toString());
 
-    // Toggle unlike off
-    if (alreadyUnliked) {
+    const hasUnliked = property.unlikes.some((uid) => uid.toString() === userId.toString());
+
+    // 🔥 Toggle OFF unlike
+    if (hasUnliked) {
       await Property.findByIdAndUpdate(id, {
         $pull: { unlikes: userId },
         $inc: { unlikesCount: -1 },
@@ -232,15 +285,15 @@ class PropertyController {
       });
     }
 
-    // Remove like if previously liked
-    if (alreadyLiked) {
+    // 🔥 Remove like if exists
+    if (hasLiked) {
       await Property.findByIdAndUpdate(id, {
         $pull: { likes: userId },
         $inc: { likesCount: -1 },
       });
     }
 
-    // Add unlike
+    // 🔥 Add unlike
     await Property.findByIdAndUpdate(id, {
       $addToSet: { unlikes: userId },
       $inc: { unlikesCount: 1 },
@@ -254,8 +307,8 @@ class PropertyController {
 
   static likeProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
-    const userId = req.user.id;
-
+    const userId = req.user._id;
+    validateId.validateMongodbId(id);
     const property = await Property.findById(id);
 
     if (!property) {
@@ -263,11 +316,12 @@ class PropertyController {
       throw new Error('Property not found');
     }
 
-    const alreadyLiked = property.likes.includes(userId);
-    const alreadyUnliked = property.unlikes.includes(userId);
+    const hasLiked = property.likes.some((uid) => uid.toString() === userId.toString());
 
-    // Toggle like off
-    if (alreadyLiked) {
+    const hasUnliked = property.unlikes.some((uid) => uid.toString() === userId.toString());
+
+    // 🔥 Toggle OFF like
+    if (hasLiked) {
       await Property.findByIdAndUpdate(id, {
         $pull: { likes: userId },
         $inc: { likesCount: -1 },
@@ -279,15 +333,15 @@ class PropertyController {
       });
     }
 
-    // If user had disliked before
-    if (alreadyUnliked) {
+    // 🔥 Remove unlike if exists
+    if (hasUnliked) {
       await Property.findByIdAndUpdate(id, {
         $pull: { unlikes: userId },
         $inc: { unlikesCount: -1 },
       });
     }
 
-    // Add like
+    // 🔥 Add like
     await Property.findByIdAndUpdate(id, {
       $addToSet: { likes: userId },
       $inc: { likesCount: 1 },
@@ -303,9 +357,9 @@ class PropertyController {
     const { commentId } = req.params;
     const { text } = req.body;
 
-    if (!text) {
+    if (!text || text.trim().length < 2) {
       res.status(400);
-      throw new Error('Reply text is required');
+      throw new Error('Reply must be at least 2 characters');
     }
 
     const parent = await Comment.findById(commentId);
@@ -315,66 +369,340 @@ class PropertyController {
       throw new Error('Parent comment not found');
     }
 
+    // ❗ prevent deep nesting (optional)
+    if (parent.parentComment) {
+      res.status(400);
+      throw new Error('Cannot reply to a reply');
+    }
+
     const reply = await Comment.create({
       property: parent.property,
-      user: req.user.id,
-      text,
+      user: req.user._id,
+      text: text.trim(),
       parentComment: parent._id,
+    });
+
+    await reply.populate('user', 'fullName profileImage');
+
+    // 🔥 increment comment count
+    await Property.findByIdAndUpdate(parent.property, {
+      $inc: { commentsCount: 1 },
     });
 
     res.status(201).json({
       success: true,
-      reply,
+      data: reply,
     });
   });
 
   static addComment = asynchandler(async (req, res) => {
     const { id } = req.params;
+
     const { text } = req.body;
 
-    if (!text) {
+    validateId.validateMongodbId(id);
+
+    if (!text || text.trim().length < 2) {
       res.status(400);
-      throw new Error('Comment text is required');
+      throw new Error('Comment must be at least 2 characters');
     }
 
     const property = await Property.findById(id);
 
-    if (!property) {
+    if (!property || !property.isAvailable) {
       res.status(404);
-      throw new Error('Property not found');
+      throw new Error('Property not available for comments');
     }
 
     const comment = await Comment.create({
       property: id,
       user: req.user.id,
-      text,
+      text: text.trim(),
       parentComment: null,
+    });
+    await comment.populate('user', 'fullName profileImage');
+
+    // 🔥 increment comment count
+    await Property.findByIdAndUpdate(id, {
+      $inc: { commentsCount: 1 },
     });
 
     res.status(201).json({
       success: true,
-      comment,
+      data: comment,
+    });
+  });
+
+  static getReplies = asynchandler(async (req, res) => {
+    const { commentId } = req.params;
+    const { page = 1, limit = 5 } = req.query;
+
+    validateId.validateMongodbId(commentId);
+
+    const parent = await Comment.findById(commentId);
+
+    if (!parent) {
+      res.status(404);
+      throw new Error('Comment not found');
+    }
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = Math.min(parseInt(limit) || 5, 50);
+    const skip = (pageNum - 1) * limitNum;
+
+    const replies = await Comment.find({
+      parentComment: commentId,
+    })
+      .populate('user', 'fullName profileImage roles')
+      .sort({ createdAt: 1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    const total = await Comment.countDocuments({
+      parentComment: commentId,
+    });
+
+    const hasMore = skip + replies.length < total;
+
+    res.status(200).json({
+      success: true,
+      count: replies.length,
+      total,
+      page: pageNum,
+      hasMore,
+      data: replies,
+    });
+  });
+
+  /*GET /api/property/69b316fc2c8fd1f441fc01f8/comments?replyLimit=3&replyPage=1*/
+  static getCommentsByProperty = asynchandler(async (req, res) => {
+    const { propertyId } = req.params;
+    const { cursor, limit = 10, replyLimit = 10 } = req.query;
+    validateId.validateMongodbId(propertyId);
+    const currentUserId = req.user ? req.user.id : null;
+
+    // ✅ Safe cursor parsing
+    let parsedCursor = null;
+    try {
+      parsedCursor = cursor ? JSON.parse(cursor) : null;
+    } catch {
+      res.status(400);
+      throw new Error('Invalid cursor format');
+    }
+    const limitNum = Math.min(parseInt(limit) || 10, 50);
+
+    const replyLimitNum = Math.min(parseInt(replyLimit) || 3, 20);
+
+    const property = await Property.findById(propertyId).select('owner  isAvailable');
+
+    if (!property || !property.isAvailable) {
+      res.status(404);
+      throw new Error('Property not available');
+    }
+
+    const ownerAgentId = property.owner;
+
+    const matchStage = {
+      property: new mongoose.Types.ObjectId(propertyId),
+      parentComment: null,
+    };
+
+    // ✅ cursor pagination (same pattern as searchProperties)
+    // ✅ Cursor pagination
+    if (parsedCursor) {
+      matchStage.$or = [
+        {
+          createdAt: { $lt: new Date(parsedCursor.value) },
+        },
+        {
+          createdAt: new Date(parsedCursor.value),
+          _id: { $lt: new mongoose.Types.ObjectId(parsedCursor.id) },
+        },
+      ];
+    }
+    const comments = await Comment.aggregate([
+      { $match: matchStage },
+
+      { $sort: { createdAt: -1, _id: -1 } },
+
+      { $limit: limitNum + 1 },
+
+      // ✅ Populate user
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+
+      // ✅ Populate agent (for owner check)
+      {
+        $lookup: {
+          from: 'agents',
+          localField: 'user._id',
+          foreignField: 'user',
+          as: 'agent',
+        },
+      },
+
+      {
+        $project: {
+          text: 1,
+          createdAt: 1,
+          property: 1,
+          parentComment: 1,
+
+          'user._id': 1,
+          'user.fullName': 1,
+          'user.profileImage': 1,
+          'user.roles': 1,
+          'user.phoneNumber': 1,
+
+          agentId: { $arrayElemAt: ['$agent._id', 0] },
+        },
+      },
+
+      // ✅ Replies
+      {
+        $lookup: {
+          from: 'comments',
+          let: { commentId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ['$parentComment', '$$commentId'],
+                },
+              },
+            },
+            { $sort: { createdAt: 1 } },
+            { $limit: replyLimitNum },
+
+            {
+              $lookup: {
+                from: 'users',
+                localField: 'user',
+                foreignField: '_id',
+                as: 'user',
+              },
+            },
+            { $unwind: '$user' },
+
+            {
+              $project: {
+                text: 1,
+                createdAt: 1,
+                parentComment: 1,
+
+                'user._id': 1,
+                'user.fullName': 1,
+                'user.profileImage': 1,
+                'user.roles': 1,
+                'user.phoneNumber': 1,
+              },
+            },
+          ],
+          as: 'replies',
+        },
+      },
+
+      // ✅ Flags
+      {
+        $addFields: {
+          isOwnerComment: {
+            $eq: ['$agentId', ownerAgentId],
+          },
+          isCurrentUser: {
+            $eq: ['$user._id', currentUserId ? new mongoose.Types.ObjectId(currentUserId) : null],
+          },
+        },
+      },
+    ]);
+
+    // ✅ cursor logic (same as searchProperties)
+    let nextCursor = null;
+
+    if (comments.length > limitNum) {
+      const nextItem = comments.pop();
+
+      nextCursor = {
+        value: nextItem.createdAt,
+        id: nextItem._id,
+      };
+    }
+
+    const hasMore = !!nextCursor;
+
+    res.status(200).json({
+      success: true,
+      count: comments.length,
+      hasMore,
+      nextCursor,
+      data: comments,
+    });
+  });
+
+  static getMyProperties = asynchandler(async (req, res) => {
+    const userId = req.user._id;
+
+    const agent = await Agent.findOne({ user: userId });
+
+    if (!agent) {
+      res.status(403);
+      throw new Error('You are not an agent');
+    }
+
+    const features = new PropertySearch(
+      Property.find({ owner: agent._id, isAvailable: true }),
+      req.query,
+    )
+      .filter()
+      .sort()
+      .limitFields()
+      .cursorPaginate()
+      .populate({
+        path: 'owner',
+        populate: {
+          path: 'user',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      });
+
+    const properties = await features.query.lean();
+
+    res.status(200).json({
+      success: true,
+      count: properties.length,
+      data: properties,
     });
   });
 
   static getSingleProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
-    const currentUserId = req.user ? req.user.id : null;
+    const currentUserId = req.user ? req.user._id : null;
 
-    const property = await Property.findByIdAndUpdate(
-      id,
-      { $inc: { views: 1 } },
-      { returnDocument: 'after' },
-    )
-      .populate('owner', 'fullName profileImage role')
+    validateId.validateMongodbId(id);
+
+    const property = await Property.findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
+      .populate({
+        path: 'owner',
+        populate: {
+          path: 'user',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      })
       .lean();
 
-    if (!property) {
+    if (!property || property.isDeleted || !property.isAvailable) {
       res.status(404);
-      throw new Error('Property not found');
+      throw new Error('Property not available');
     }
 
-    const ownerId = property.owner._id;
+    const ownerAgentId = property.owner._id;
 
     const comments = await Comment.aggregate([
       {
@@ -384,6 +712,7 @@ class PropertyController {
         },
       },
 
+      // user
       {
         $lookup: {
           from: 'users',
@@ -392,26 +721,36 @@ class PropertyController {
           as: 'user',
         },
       },
+      { $unwind: '$user' },
+
+      // agent lookup
       {
-        $unwind: '$user',
+        $lookup: {
+          from: 'agents',
+          localField: 'user._id',
+          foreignField: 'user',
+          as: 'agent',
+        },
       },
+
       {
         $project: {
           text: 1,
           property: 1,
           parentComment: 1,
           createdAt: 1,
-          updatedAt: 1,
 
           'user._id': 1,
           'user.fullName': 1,
           'user.profileImage': 1,
-          'user.role': 1,
+          'user.roles': 1,
           'user.phoneNumber': 1,
+
+          agentId: { $arrayElemAt: ['$agent._id', 0] },
         },
       },
 
-      // Replies lookup
+      // replies
       {
         $lookup: {
           from: 'comments',
@@ -422,6 +761,7 @@ class PropertyController {
                 $expr: { $eq: ['$parentComment', '$$commentId'] },
               },
             },
+
             {
               $lookup: {
                 from: 'users',
@@ -430,36 +770,18 @@ class PropertyController {
                 as: 'user',
               },
             },
-            {
-              $unwind: '$user',
-            },
+            { $unwind: '$user' },
+
             {
               $project: {
                 text: 1,
-                property: 1,
-                parentComment: 1,
                 createdAt: 1,
-                updatedAt: 1,
 
                 'user._id': 1,
                 'user.fullName': 1,
                 'user.profileImage': 1,
-                'user.role': 1,
+                'user.roles': 1,
                 'user.phoneNumber': 1,
-              },
-            },
-
-            {
-              $addFields: {
-                isOwnerReply: {
-                  $eq: ['$user._id', ownerId],
-                },
-                isCurrentUser: {
-                  $eq: [
-                    '$user._id',
-                    currentUserId ? new mongoose.Types.ObjectId(currentUserId) : null,
-                  ],
-                },
               },
             },
 
@@ -469,11 +791,10 @@ class PropertyController {
         },
       },
 
-      // Highlight comment owner + current user
       {
         $addFields: {
           isOwnerComment: {
-            $eq: ['$user._id', ownerId],
+            $eq: ['$agentId', ownerAgentId],
           },
           isCurrentUser: {
             $eq: ['$user._id', currentUserId ? new mongoose.Types.ObjectId(currentUserId) : null],
@@ -492,23 +813,73 @@ class PropertyController {
     });
   });
 
-  static getReplies = asynchandler(async (req, res) => {
-    const { commentId } = req.params;
-    const { page = 1, limit = 5 } = req.query;
+  static getPropertyBySlug = asynchandler(async (req, res) => {
+    const { slug } = req.params;
 
-    const skip = (page - 1) * limit;
+    const property = await Property.findOne({ slug })
+      .populate({
+        path: 'owner',
+        populate: {
+          path: 'user',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      })
+      .lean();
 
-    const replies = await Comment.find({
-      parentComment: commentId,
-    })
-      .populate('user', 'fullName profileImage role')
-      .sort({ createdAt: 1 })
-      .skip(skip)
-      .limit(limit);
+    if (!property || property.isDeleted || !property.isAvailable) {
+      res.status(404);
+      throw new Error('Property not found');
+    }
 
-    res.json({
+    res.status(200).json({
       success: true,
-      replies,
+      data: property,
+    });
+  });
+
+  static getAgentsPropertiesById = asynchandler(async (req, res) => {
+    const agentId = req.params.id;
+
+    validateId.validateMongodbId(agentId);
+
+    const agent = await Agent.findById(agentId);
+
+    if (!agent) {
+      res.status(404);
+      throw new Error('Agent not found');
+    }
+
+    // if (agent.status !== 'approved') {
+    //   res.status(403);
+    //   throw new Error('Agent is not approved');
+    // }
+
+    const features = new PropertySearch(
+      Property.find({
+        owner: agentId,
+        // isDeleted: false,
+        isAvailable: true,
+      }),
+      req.query,
+    )
+      .filter()
+      .sort()
+      .limitFields()
+      .cursorPaginate()
+      .populate({
+        path: 'owner',
+        populate: {
+          path: 'user',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      });
+
+    const properties = await features.query.lean();
+
+    res.status(200).json({
+      success: true,
+      count: properties.length,
+      data: properties,
     });
   });
 
@@ -534,34 +905,47 @@ class PropertyController {
       lat,
       lng,
     } = req.body;
+
+    // ✅ Agent check
+    const agent = await Agent.findOne({ user: req.user._id });
+
+    if (!agent) {
+      res.status(403);
+      throw new Error('You are not an agent');
+    }
+
+    // if (agent.status !== 'approved') {
+    //   res.status(403);
+    //   throw new Error('Agent not approved');
+    // }
     // ===============================
     // ✅ Basic Required Validation
     // ===============================
+
     if (!title || !description || !type || !status || !price) {
       res.status(400);
       throw new Error('Missing required property fields');
     }
 
-    if (
-      inspectionFee === undefined ||
-      inspectionFee === null ||
-      typeof inspectionFee !== 'number' ||
-      isNaN(inspectionFee)
-    ) {
+    // ✅ Numbers
+    const parsedPrice = Number(price);
+    const parsedInspectionFee = Number(inspectionFee);
+    const parsedLat = Number(lat);
+    const parsedLng = Number(lng);
+
+    if (isNaN(parsedPrice) || isNaN(parsedInspectionFee)) {
       res.status(400);
-      throw new Error('Valid inspection fee is required');
+      throw new Error('Invalid price or inspection fee');
     }
-    if (!lat || !lng) {
+
+    if (isNaN(parsedLat) || isNaN(parsedLng)) {
       res.status(400);
-      throw new Error('Property coordinates (lat & lng) are required');
+      throw new Error('Invalid coordinates');
     }
 
     // Validate images exist
-    if (!req.files || req.files.length === 0) {
-      res.status(400);
-      throw new Error('At least one property image is required');
-    }
-    if (req.files.length < 3) {
+
+    if (!req.files || req.files.length < 3) {
       res.status(400);
       throw new Error('Minimum 3 property images required');
     }
@@ -570,7 +954,8 @@ class PropertyController {
       throw new Error('Maximum 6 images allowed');
     }
 
-    const count = await Property.countDocuments({ owner: req.user.id });
+    // ✅ Property limit
+    const count = await Property.countDocuments({ owner: agent._id });
 
     if (count >= 50) {
       res.status(400);
@@ -582,300 +967,63 @@ class PropertyController {
     // ===============================
     let uploadedImages = [];
 
-    if (req.files && req.files.length > 0) {
-      try {
-        for (const file of req.files) {
-          const result = await UploadCloud.upload(file.path, 'rublist/properties');
+    try {
+      for (const file of req.files) {
+        const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
-          uploadedImages.push({
-            url: result.url,
-            public_id: result.public_id,
-          });
+        uploadedImages.push({
+          url: result.url,
+          public_id: result.public_id,
+        });
 
-          // Remove file from local storage
-          fs.unlinkSync(file.path);
-        }
-      } catch (error) {
-        // delete already uploaded images
-        await Promise.all(uploadedImages.map((img) => UploadCloud.delete(img.public_id)));
-        res.status(400);
-        throw new Error(error);
+        // Remove file from local storage
+        await fs.unlinkSync(file.path);
       }
-    }
-
-    // ===============================
-    // 🏗 Create Property Document
-    // ===============================
-    const property = await Property.create({
-      title,
-      description,
-      type,
-      status,
-      furnishingStatus,
-      price,
-      bedrooms,
-      bathrooms,
-      size,
-      agentFee,
-      inspectionFee,
-      paymentFrequency,
-      slug: slugify(title, {
-        lower: true,
-        strict: true,
-      }),
-      amenities,
-      location: {
-        address,
-        city,
-        state,
-        country,
-        coordinates: {
-          type: 'Point',
-          coordinates: [Number(lng), Number(lat)],
-        },
-      },
-
-      images: uploadedImages,
-      owner: req.user._id,
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Property created successfully',
-      property,
-    });
-  });
-
-  static getPropertyBySlug = asynchandler(async (req, res) => {
-    const { slug } = req.params;
-
-    const property = await Property.findOne({ slug })
-      .populate('owner', 'fullName profileImage role')
-      .lean();
-
-    if (!property) {
-      res.status(404);
-      throw new Error('Property not found');
-    }
-
-    res.status(200).json({
-      success: true,
-      data: property,
-    });
-  });
-
-  static getMyProperties = asynchandler(async (req, res) => {
-    const userId = req.user.id;
-
-    const features = new PropertySearch(Property.find({ owner: userId }), req.query)
-      .filter()
-      .sort()
-      .limitFields()
-      .cursorPaginate()
-      .populate(['owner fullName profileImage role phoneNumber']);
-
-    const properties = await features.query;
-
-    // Get comment counts for all properties
-    const propertyIds = properties.map((p) => p._id);
-
-    const commentsCount = await Comment.aggregate([
-      {
-        $match: {
-          property: { $in: propertyIds },
-        },
-      },
-      {
-        $group: {
-          _id: '$property',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const countMap = {};
-    commentsCount.forEach((c) => {
-      countMap[c._id.toString()] = c.count;
-    });
-
-    // Attach count to each property
-    const result = properties.map((property) => ({
-      ...property.toObject(),
-      commentsCount: countMap[property._id.toString()] || 0,
-    }));
-
-    res.status(200).json({
-      success: true,
-      count: result.length,
-      data: result,
-    });
-  });
-
-  /*GET /api/property/69b316fc2c8fd1f441fc01f8/comments?replyLimit=3&replyPage=1*/
-  static getCommentsByProperty = asynchandler(async (req, res) => {
-    const { propertyId } = req.params;
-    const { cursor, limit = 10 } = req.query;
-
-    const currentUserId = req.user ? req.user.id : null;
-
-    const parsedCursor = cursor ? JSON.parse(cursor) : null;
-
-    const matchStage = {
-      property: new mongoose.Types.ObjectId(propertyId),
-      parentComment: null,
-    };
-
-    // ✅ cursor pagination (same pattern as searchProperties)
-    if (parsedCursor) {
-      matchStage.$or = [
-        {
-          createdAt: { $lt: new Date(parsedCursor.value) },
-        },
-        {
-          createdAt: new Date(parsedCursor.value),
-          _id: { $lt: new mongoose.Types.ObjectId(parsedCursor.id) },
-        },
-      ];
-    }
-
-    const property = await Property.findById(propertyId).select('owner');
-
-    if (!property) {
-      res.status(404);
-      throw new Error('Property not found');
-    }
-
-    const ownerId = property.owner;
-
-    const comments = await Comment.aggregate([
-      { $match: matchStage },
-
-      { $sort: { createdAt: -1, _id: -1 } },
-
-      { $limit: parseInt(limit) + 1 },
-
-      // ✅ populate user
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user',
-          foreignField: '_id',
-          as: 'user',
-        },
-      },
-      { $unwind: '$user' },
-
-      {
-        $project: {
-          text: 1,
-          createdAt: 1,
-          property: 1,
-          parentComment: 1,
-
-          'user._id': 1,
-          'user.fullName': 1,
-          'user.profileImage': 1,
-          'user.role': 1,
-          'user.phoneNumber': 1,
-        },
-      },
-
-      // ✅ replies (populated)
-      {
-        $lookup: {
-          from: 'comments',
-          let: { commentId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $eq: ['$parentComment', '$$commentId'],
-                },
-              },
-            },
-            { $sort: { createdAt: 1 } },
-            { $limit: 10 },
-
-            {
-              $lookup: {
-                from: 'users',
-                localField: 'user',
-                foreignField: '_id',
-                as: 'user',
-              },
-            },
-            { $unwind: '$user' },
-
-            {
-              $project: {
-                text: 1,
-                createdAt: 1,
-                parentComment: 1,
-
-                'user._id': 1,
-                'user.fullName': 1,
-                'user.profileImage': 1,
-                'user.role': 1,
-                'user.phoneNumber': 1,
-              },
-            },
-          ],
-          as: 'replies',
-        },
-      },
-
-      // ✅ flags
-      {
-        $addFields: {
-          isOwnerComment: {
-            $eq: ['$user._id', ownerId],
-          },
-          isCurrentUser: {
-            $eq: ['$user._id', currentUserId ? new mongoose.Types.ObjectId(currentUserId) : null],
+      // ===============================
+      // 🏗 Create Property Document
+      // ===============================
+      const property = await Property.create({
+        title,
+        description,
+        type,
+        status,
+        furnishingStatus,
+        price: parsedPrice,
+        bedrooms,
+        bathrooms,
+        size,
+        agentFee,
+        inspectionFee: parsedInspectionFee,
+        paymentFrequency,
+        slug: `${slugify(title, { lower: true, strict: true })}-${Date.now()}`,
+        amenities,
+        location: {
+          address,
+          city,
+          state,
+          country,
+          coordinates: {
+            type: 'Point',
+            coordinates: [parsedLng, parsedLat],
           },
         },
-      },
-    ]);
 
-    // ✅ cursor logic (same as searchProperties)
-    let nextCursor = null;
+        images: uploadedImages,
+        owner: agent._id,
+        isAvailable: true,
+      });
 
-    if (comments.length > limit) {
-      const nextItem = comments.pop();
-
-      nextCursor = {
-        value: nextItem.createdAt,
-        id: nextItem._id,
-      };
+      res.status(201).json({
+        success: true,
+        message: 'Property created successfully',
+        property,
+      });
+    } catch (error) {
+      // delete already uploaded images
+      await Promise.all(uploadedImages.map((img) => UploadCloud.delete(img.public_id)));
+      res.status(500);
+      throw new Error(error.message || 'Failed to create property');
     }
-
-    res.status(200).json({
-      success: true,
-      count: comments.length,
-      data: comments,
-      nextCursor,
-    });
-  });
-
-  static getAgentsPropertiesById = asynchandler(async (req, res) => {
-    const agentId = req.params.id;
-
-    validateId.validateMongodbId(agentId);
-
-    const features = new PropertySearch(Property.find({ owner: agentId }), req.query)
-      .filter()
-      .sort()
-      .limitFields()
-      .cursorPaginate()
-      .populate(['owner fullName profileImage role phoneNumber']);
-
-    const properties = await features.query;
-
-    res.status(200).json({
-      success: true,
-      count: properties.length,
-      data: properties,
-    });
   });
 }
 

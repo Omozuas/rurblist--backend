@@ -51,7 +51,11 @@ const paymentSchema = new mongoose.Schema(
       enum: ['pending', 'success', 'failed', 'refunded'],
       default: 'pending',
     },
-
+    plan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Plan',
+      default: null,
+    },
     paymentMethod: {
       type: String,
       default: 'paystack',

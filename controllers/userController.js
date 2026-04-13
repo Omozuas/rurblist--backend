@@ -2,6 +2,8 @@ const asynchandler = require('express-async-handler');
 const fs = require('fs');
 const User = require('../models/User');
 const Property = require('../models/Property');
+const HomeSeeker = require('../models/HomeSeeker');
+const Agent = require('../models/Agent');
 const UploadCloud = require('../config/cloudnary');
 const validateId = require('../helper/validatemongodb');
 const ApiFeatures = require('../helper/userQueryDB');
@@ -24,23 +26,27 @@ class UserController {
     let publicId = user.profileImage?.public_id;
 
     try {
-      if (req.file) {
-        // delete previous image
+      // ===============================
+      // 🖼 PROFILE IMAGE UPDATE
+      // ===============================
+      if (req.files?.image) {
+        const file = req.files.image[0];
+
         if (publicId) {
           await UploadCloud.delete(publicId);
         }
 
-        const uploaded = await UploadCloud.upload(req.file.path, 'rublist/profileImage');
+        const uploaded = await UploadCloud.upload(file.path, 'rublist/profileImage');
 
         imageUrl = uploaded.url;
         publicId = uploaded.public_id;
 
-        // remove temp file
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
+        await fs.promises.unlink(file.path);
       }
 
+      // ===============================
+      // 👤 UPDATE USER
+      // ===============================
       const updatedUser = await User.findByIdAndUpdate(
         id,
         {
@@ -56,10 +62,69 @@ class UserController {
         { returnDocument: 'after' },
       );
 
+      // ===============================
+      // 🧠 HANDLE HOMESEEKER KYC
+      // ===============================
+      const homeSeeker = await HomeSeeker.findOne({ user: id });
+
+      if (homeSeeker) {
+        let shouldUpdateStatus = false;
+        if (req.body.nin && req.body.nin.length !== 11) {
+          res.status(400);
+          throw new Error('Invalid NIN');
+        }
+        if (homeSeeker.status === 'under_review') {
+          res.status(400);
+          throw new Error('Verification already in progress');
+        }
+        // 🪪 NIN provided
+        if (req.body?.nin) {
+          homeSeeker.nin = req.body.nin;
+          shouldUpdateStatus = true;
+        }
+
+        // 📄 NIN Slip upload
+        if (req.files?.ninSlip) {
+          const file = req.files.ninSlip[0];
+
+          const uploaded = await UploadCloud.upload(file.path, 'rublist/homeseeker/ninSlip');
+
+          homeSeeker.ninSlipUrl = {
+            url: uploaded.url,
+            public_id: uploaded.public_id,
+          };
+
+          await fs.promises.unlink(file.path);
+          shouldUpdateStatus = true;
+        }
+
+        // 🤳 Selfie upload
+        if (req.files?.selfie) {
+          const file = req.files.selfie[0];
+
+          const uploaded = await UploadCloud.upload(file.path, 'rublist/homeseeker/selfie');
+
+          homeSeeker.selfieUrl = {
+            url: uploaded.url,
+            public_id: uploaded.public_id,
+          };
+
+          await fs.promises.unlink(file.path);
+          shouldUpdateStatus = true;
+        }
+
+        // 🔥 UPDATE STATUS
+        if (shouldUpdateStatus) {
+          homeSeeker.status = 'under_review';
+        }
+
+        await homeSeeker.save();
+      }
+
       res.status(200).json({
         success: true,
         message: 'Profile updated successfully',
-        user: updatedUser,
+        data: updatedUser,
       });
     } catch (error) {
       res.status(500);
@@ -117,18 +182,30 @@ class UserController {
 
     validateId.validateMongodbId(id);
 
-    const user = await User.findById(id).select('-password -otp -passwordResetToken -__v');
-    // .populate("address")
-    // .populate("savedProperties");
+    const user = await User.findById(id).select(
+      'fullName username profileImage roles phoneNumber email isLogin username',
+    );
 
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
+    const profiles = {};
 
+    if (user.roles.includes('Home_Seeker')) {
+      profiles.homeSeeker = await HomeSeeker.findOne({ user: id }).select(
+        'preferredLocations budget status kycStatus address',
+      );
+    }
+
+    if (user.roles.includes('Agent')) {
+      profiles.agent = await Agent.findOne({ user: id }).select(
+        'firstName lastName status description address kycStatus',
+      );
+    }
     res.status(200).json({
       success: true,
-      user,
+      data: { user, profiles },
     });
   });
 
@@ -138,19 +215,31 @@ class UserController {
     validateId.validateMongodbId(id);
 
     const user = await User.findById(id).select(
-      '-password -otp -passwordResetToken -__v -refreshToken -passwordChangedDate -passwordChangedDate -createdAt -updatedAt -otpExpires',
+      'fullName username profileImage roles phoneNumber email isLogin username',
     );
-    // .populate("address")
-    // .populate("savedProperties");
 
     if (!user) {
       res.status(404);
       throw new Error('User not found');
     }
 
+    let profile = null;
+
+    // 🔥 Attach correct profile
+    if (user.roles.includes('Home_Seeker')) {
+      profile = await HomeSeeker.findOne({ user: id }).populate('savedProperties');
+    }
+
+    if (user.roles.includes('Agent')) {
+      profile = await Agent.findOne({ user: id }).populate('savedProperties');
+    }
+
     res.status(200).json({
       success: true,
-      data: user,
+      data: {
+        user,
+        profile,
+      },
     });
   });
 
@@ -321,7 +410,7 @@ class UserController {
   static toggleSaveProperty = asynchandler(async (req, res) => {
     const { propertyId } = req.params;
     const userId = req.user.id;
-
+    validateId.validateMongodbId(propertyId);
     const property = await Property.findById(propertyId);
 
     if (!property) {
@@ -331,12 +420,23 @@ class UserController {
 
     const user = await User.findById(userId);
 
-    const isSaved = user.savedProperties.includes(propertyId);
+    let Model;
+
+    if (user.roles.includes('Home_Seeker')) {
+      Model = HomeSeeker;
+    } else if (user.roles.includes('Agent')) {
+      Model = Agent;
+    } else {
+      res.status(403);
+      throw new Error('Not allowed');
+    }
+
+    const profile = await Model.findOne({ user: userId });
+
+    const isSaved = profile.savedProperties.includes(propertyId);
 
     if (isSaved) {
-      await User.findByIdAndUpdate(userId, {
-        $pull: { savedProperties: propertyId },
-      });
+      await Model.findOneAndUpdate({ user: userId }, { $pull: { savedProperties: propertyId } });
 
       return res.status(200).json({
         success: true,
@@ -344,9 +444,10 @@ class UserController {
       });
     }
 
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { savedProperties: propertyId },
-    });
+    await Model.findOneAndUpdate(
+      { user: userId },
+      { $addToSet: { savedProperties: propertyId } }, // 🔥 prevents duplicates
+    );
 
     res.status(200).json({
       success: true,
@@ -355,18 +456,42 @@ class UserController {
   });
 
   static getSavedProperties = asynchandler(async (req, res) => {
-    const user = await User.findById(req.user.id).populate({
-      path: 'savedProperties',
-      populate: {
-        path: 'owner',
-        select: 'fullName profileImage role phoneNumber',
-      },
-    });
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+
+    let profile;
+
+    if (user.roles.includes('Home_Seeker')) {
+      profile = await HomeSeeker.findOne({ user: userId }).populate({
+        path: 'savedProperties',
+        populate: {
+          path: 'owner',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      });
+    } else if (user.roles.includes('Agent')) {
+      profile = await Agent.findOne({ user: userId }).populate({
+        path: 'savedProperties',
+        populate: {
+          path: 'owner',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      });
+    } else {
+      res.status(403);
+      throw new Error('This role cannot have saved properties');
+    }
+
+    if (!profile) {
+      res.status(404);
+      throw new Error('Profile not found');
+    }
 
     res.status(200).json({
       success: true,
-      count: user.savedProperties.length,
-      data: user.savedProperties,
+      count: profile.savedProperties?.length || 0,
+      data: profile.savedProperties,
     });
   });
 }
