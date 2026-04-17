@@ -1,97 +1,93 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 
 // Declare the userSchema of the Mongo model
 
-var userSchema= new mongoose.Schema({
-    fullName:{
-        type: String,
-        required: true
-    },
-    email:{
-        type: String,
-        required: true,
-        unique: true
-    },
-    username:{
-        type:String,
-        unique: true,
-        required: false,
-    },
-    profileImage:{
-        type:String
-    },
-    phoneNumber:{
-        type:String,
-        required: true,
-        unique: true
-    },
-    password:{
-        type:String,
-        required:true,
-    },
-    savedProperties: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Property", // Reference to Property schema
-      },
-    ],
-    role:{
-        type:String,
-        default:"Home_Seeker",
-        enum:["Home_Seeker","Admin","Agent","Landlord"]
-    },
-    otp:{
-        type:String,
-        default:'none',
-    },
-    otpExpires:{
-        type:Date,
-        default: () => new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
-    },
-    isEmailVerified:{
-        type:Boolean,
-        default: false
-    },
-    verificationStatus: {
+var userSchema = new mongoose.Schema(
+  {
+    fullName: {
       type: String,
-      enum: [
-        "unverified",
-        "nin_verified",
-        "cac_verified",
-        "premium_verified",
-        "pending",
-      ],
-      default: "unverified",
+      required: true,
+      trim: true,
     },
-    isLogin:{
-        type:Boolean,
-        default: false
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
     },
-    address:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"Address",
-        require:false
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
+      required: false,
     },
-    isBlocked:{
-        type:Boolean,
-        default: false
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
-    passwordChangedDate:{
-        type:Date,
-        required: false, // Not required initially
+    profileImage: {
+      url: {
+        type: String,
+        default: null,
+      },
+      public_id: {
+        type: String,
+        default: null,
+      },
     },
-    passwordResetExpires:{
-        type:Date,
-        required: false, // Not required initially
+    phoneNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
-    passwordResetToken:{
-        type:String,
-        required: false, // Not required initially
-    }
-},{ timestamps: true }
+    password: {
+      type: String,
+      required: true,
+    },
+    roles: {
+      type: [String],
+      enum: ['Home_Seeker', 'Agent', 'Landlord', 'Developer', 'Admin'],
+      default: ['Home_Seeker'],
+      index: true,
+    },
+    otp: {
+      type: String,
+      default: null,
+    },
+
+    refreshToken: {
+      type: String,
+      default: null,
+    },
+    otpExpires: {
+      type: Date,
+      default: null,
+    },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    isLogin: {
+      type: Boolean,
+      default: false,
+    },
+
+    isBlocked: {
+      type: Boolean,
+      default: false,
+    },
+    passwordChangedDate: Date,
+    passwordResetExpires: Date,
+    passwordResetToken: String,
+  },
+  { timestamps: true },
 );
 
 //Export the model
-module.exports = mongoose.model('User', userSchema);
+const User = mongoose.model('User', userSchema);
+module.exports = User;
