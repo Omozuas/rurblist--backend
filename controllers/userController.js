@@ -223,22 +223,24 @@ class UserController {
       throw new Error('User not found');
     }
 
-    let profile = null;
+    let agent = null;
+    let homeSeeker = null;
 
     // 🔥 Attach correct profile
     if (user.roles.includes('Home_Seeker')) {
-      profile = await HomeSeeker.findOne({ user: id }).populate('savedProperties');
+      homeSeeker = await HomeSeeker.findOne({ user: id }).populate('savedProperties');
     }
 
     if (user.roles.includes('Agent')) {
-      profile = await Agent.findOne({ user: id }).populate('savedProperties');
+      agent = await Agent.findOne({ user: id }).populate('savedProperties');
     }
 
     res.status(200).json({
       success: true,
       data: {
         user,
-        profile,
+        homeSeeker,
+        agent,
       },
     });
   });

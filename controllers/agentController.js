@@ -211,8 +211,8 @@ class AgentController {
     const user = req.user;
 
     const agent = await Agent.findOne({ user: user._id }).populate(
-      'agent',
-      'email fullName isAgent _id phoneNumber profileImage',
+      'user',
+      'email fullName roles _id phoneNumber profileImage',
     );
 
     if (!agent) {
@@ -379,10 +379,10 @@ class AgentController {
     }
 
     const agent = await Agent.findOne({ user: userId }).populate(
-      'agent',
-      'email fullName isAgent _id phoneNumber profileImage',
+      'user',
+      'email fullName  _id phoneNumber profileImage',
     );
-
+    console.log('Agent found:', agent);
     if (!agent) {
       res.status(404);
       throw new Error('Agent not found for this user');
@@ -402,10 +402,24 @@ class AgentController {
       throw new Error('Unauthorized');
     }
 
-    const { nin, cacNumber, companyName, bvn, isAgreement } = req.body;
+    const {
+      nin,
+      cacNumber,
+      companyName,
+      bvn,
+      isAgreement,
+      yearsOfExperience,
+      description,
+      dateOfBirth,
+      nationality,
+      city,
+      address,
+      firstName,
+      lastName,
+    } = req.body;
 
     const parsedAgreement = isAgreement === true || isAgreement === 'true';
-
+    const parsedYears = Number(yearsOfExperience);
     if (!parsedAgreement) {
       res.status(400);
       throw new Error('You must accept the terms and agreement');
@@ -476,13 +490,21 @@ class AgentController {
       if (cacNumber) agent.cacNumber = cacNumber;
       if (companyName) agent.companyName = companyName;
       if (bvn) agent.bvn = bvn;
+      if (yearsOfExperience) agent.yearsOfExperience = parsedYears;
+      if (description) agent.description = description;
+      if (dateOfBirth) agent.dateOfBirth = dateOfBirth;
+      if (nationality) agent.nationality = nationality;
+      if (address) agent.address = address;
+      if (firstName) agent.firstName = firstName;
+      if (lastName) agent.lastName = lastName;
+      if (city) agent.city = city;
 
       if (fileUrls.selfieUrl) agent.selfieUrl = fileUrls.selfieUrl;
       if (fileUrls.ninSlipUrl) agent.ninSlipUrl = fileUrls.ninSlipUrl;
       if (fileUrls.cacDocumentUrl) agent.cacDocumentUrl = fileUrls.cacDocumentUrl;
 
       // ✅ AGREEMENT (IMPORTANT)
-      agent.isAgreement = true;
+      agent.isAgreement = parsedAgreement;
 
       // 🔥 Move to review
       agent.status = 'under_review';

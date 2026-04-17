@@ -12,27 +12,37 @@ const { nanoid } = require('nanoid');
 
 class AuthController {
   static createUser = asynchandler(async (req, res) => {
+    const { email, password, role, fullName, phoneNumber } = req.body;
+
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
+
     const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-    if (!emailRegex.test(req.body.email)) {
+
+    const phoneRegex = /^(?:\+234|0)[789][01]\d{8}$/;
+
+    if (!emailRegex.test(email)) {
       res.status(401);
       throw new Error('Email is not valid');
     }
 
+    if (!phoneRegex.test(phoneNumber)) {
+      res.status(400);
+      throw new Error('Invalid phone number');
+    }
     const minPasswordLength = 8;
 
-    if (req.body.password.length < minPasswordLength) {
+    if (password.length < minPasswordLength) {
       res.status(401);
       throw new Error('Password should be at least ' + minPasswordLength + ' characters long');
     }
-    if (!strongPassword.test(req.body.password)) {
+    if (!strongPassword.test(password)) {
       res.status(400);
       throw new Error(
         'Password must contain uppercase, lowercase, number, special character and be at least 8 characters',
       );
     }
     // ❗ Block admin signup
-    if (req.body.role === 'Admin') {
+    if (role === 'Admin') {
       res.status(403);
       throw new Error('You cannot register as admin');
     }
@@ -44,26 +54,27 @@ class AuthController {
       throw new Error('Invalid role selected');
     }
     try {
-      const isExisting = await User.findOne({ email: req.body.email });
+      const isExisting = await User.findOne({ email: email });
       if (isExisting) {
         res.status(401);
         throw new Error('Email Already Exists');
       }
-      const hashedPassword = await bcrypt.hash(req.body.password, 10);
+      const hashedPassword = await bcrypt.hash(password, 10);
       // GENERATE OTP
       const otp = generateOtp();
       const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-      const username = `${req.body.fullName}_${nanoid(5)}`;
+      const username = `${fullName}_${nanoid(5)}`;
       const newUser = new User({
-        fullName: req.body.fullName,
-        phoneNumber: req.body.phoneNumber,
-        email: req.body.email,
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        email: email,
         password: hashedPassword,
         otp: otp,
         otpExpires: otpExpires,
         username: username,
-        roles: [req.body.role], // 🔥 ONLY selected role
+        roles: [role], // 🔥 ONLY selected role
       });
+      await newUser.save();
       // =========================
       // 🔥 CREATE PROFILE BASED ON ROLE
       // =========================
@@ -83,6 +94,7 @@ class AuthController {
       }
       //send email otp
       await SendEmails.sendOtpMail(newUser.email, newUser.fullName, otp);
+
       res.status(201).json({ success: true, message: 'Account successfully created.' });
     } catch (error) {
       throw new Error(`${error.message}`);
@@ -176,9 +188,8 @@ class AuthController {
 
   static loginUser = asynchandler(async (req, res) => {
     const { email, password } = req.body;
-
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-    email = email.toLowerCase();
+
     if (!emailRegex.test(email)) {
       res.status(400);
       throw new Error('Invalid email format');
@@ -233,7 +244,6 @@ class AuthController {
       secure: isProduction,
       sameSite: isProduction ? 'none' : 'lax',
     });
-
     return res.status(200).json({
       data: {
         token: accessToken,
@@ -247,7 +257,6 @@ class AuthController {
   static forgotPassword = asynchandler(async (req, res) => {
     const { email } = req.body;
 
-    email = email.toLowerCase();
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -284,8 +293,6 @@ class AuthController {
 
   static resetPassword = asynchandler(async (req, res) => {
     const { email, otp, password } = req.body;
-
-    email = email.toLowerCase();
 
     if (!otp) {
       res.status(400);
@@ -414,7 +421,7 @@ class AuthController {
   static refreshAccessToken = asynchandler(async (req, res) => {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) {
-      res.status(401);
+      res.status(400);
       throw new Error('No refresh token provided');
     }
 
@@ -423,14 +430,14 @@ class AuthController {
     try {
       decoded = jwtToken.verifyRefreshToken(refreshToken);
     } catch (err) {
-      res.status(403);
+      res.status(401);
       throw new Error('Invalid or expired refresh token');
     }
 
     const user = await User.findById(decoded.userId);
 
     if (!user || user.refreshToken !== refreshToken) {
-      res.status(403);
+      res.status(401);
       throw new Error('Refresh token does not match');
     }
 
@@ -478,6 +485,7 @@ class AuthController {
       message: 'success',
       data: {
         accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
       },
     });
   });
@@ -525,6 +533,7 @@ class AuthController {
       success: true,
       data: {
         accessToken: accessToken,
+        refreshToken: refreshToken,
       },
     });
   });

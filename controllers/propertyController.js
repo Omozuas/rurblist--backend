@@ -40,7 +40,7 @@ class PropertyController {
   static searchProperties = async (req, res) => {
     const baseQuery = {
       isAvailable: true,
-      verificationStatus: 'verified',
+      // verificationStatus: 'verified',
     };
 
     const features = new PropertySearch(Property.find(baseQuery), req.query)
@@ -370,10 +370,10 @@ class PropertyController {
     }
 
     // ❗ prevent deep nesting (optional)
-    if (parent.parentComment) {
-      res.status(400);
-      throw new Error('Cannot reply to a reply');
-    }
+    // if (parent.parentComment) {
+    //   res.status(400);
+    //   throw new Error('Cannot reply to a reply');
+    // }
 
     const reply = await Comment.create({
       property: parent.property,
@@ -474,12 +474,106 @@ class PropertyController {
       data: replies,
     });
   });
+  /* static getReplies = asynchandler(async (req, res) => {
+    const { commentId } = req.params;
+    let { page = 1, limit = 5 } = req.query;
+
+    validateId.validateMongodbId(commentId);
+
+    const parent = await Comment.findById(commentId);
+    if (!parent) {
+      res.status(404);
+      throw new Error('Comment not found');
+    }
+
+    const pageNum = Math.max(parseInt(page), 1);
+    const limitNum = Math.min(parseInt(limit), 50) || 5;
+    const skip = (pageNum - 1) * limitNum;
+
+    // 🔥 STEP 1: Get ALL comments under same property
+    const allComments = await Comment.find({
+      property: parent.property,
+    })
+      .select('_id parentComment createdAt')
+      .lean();
+
+    // 🔥 STEP 2: Build parent -> children map
+    const childrenMap = new Map();
+
+    allComments.forEach((c) => {
+      const parentId = c.parentComment?.toString();
+      if (!parentId) return;
+
+      if (!childrenMap.has(parentId)) {
+        childrenMap.set(parentId, []);
+      }
+
+      childrenMap.get(parentId).push(c._id.toString());
+    });
+
+    // 🔥 STEP 3: Recursively collect all descendant IDs
+    const getAllDescendants = (id) => {
+      let result = [];
+
+      const children = childrenMap.get(id) || [];
+
+      for (const childId of children) {
+        result.push(childId);
+        result = result.concat(getAllDescendants(childId));
+      }
+
+      return result;
+    };
+
+    const allReplyIds = getAllDescendants(commentId);
+
+    // ❗ If no replies
+    if (allReplyIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        total: 0,
+        page: pageNum,
+        hasMore: false,
+        data: [],
+      });
+    }
+
+    // 🔥 STEP 4: Use your SAME pagination logic
+    const query = {
+      _id: { $in: allReplyIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    };
+
+    const [replies, total] = await Promise.all([
+      Comment.find(query)
+        .populate('user', 'fullName profileImage roles')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+
+      Comment.countDocuments(query),
+    ]);
+
+    const hasMore = skip + replies.length < total;
+
+    res.status(200).json({
+      success: true,
+      count: replies.length,
+      total,
+      page: pageNum,
+      hasMore,
+      data: replies,
+    });
+  }); */
 
   /*GET /api/property/69b316fc2c8fd1f441fc01f8/comments?replyLimit=3&replyPage=1*/
   static getCommentsByProperty = asynchandler(async (req, res) => {
     const { propertyId } = req.params;
     const { cursor, limit = 10, replyLimit = 10 } = req.query;
+
     validateId.validateMongodbId(propertyId);
+
     const currentUserId = req.user ? req.user.id : null;
 
     // ✅ Safe cursor parsing
@@ -490,11 +584,11 @@ class PropertyController {
       res.status(400);
       throw new Error('Invalid cursor format');
     }
+
     const limitNum = Math.min(parseInt(limit) || 10, 50);
+    const replyLimitNum = Math.min(parseInt(replyLimit) || 10, 50);
 
-    const replyLimitNum = Math.min(parseInt(replyLimit) || 3, 20);
-
-    const property = await Property.findById(propertyId).select('owner  isAvailable');
+    const property = await Property.findById(propertyId).select('owner isAvailable');
 
     if (!property || !property.isAvailable) {
       res.status(404);
@@ -508,19 +602,17 @@ class PropertyController {
       parentComment: null,
     };
 
-    // ✅ cursor pagination (same pattern as searchProperties)
     // ✅ Cursor pagination
     if (parsedCursor) {
       matchStage.$or = [
-        {
-          createdAt: { $lt: new Date(parsedCursor.value) },
-        },
+        { createdAt: { $lt: new Date(parsedCursor.value) } },
         {
           createdAt: new Date(parsedCursor.value),
           _id: { $lt: new mongoose.Types.ObjectId(parsedCursor.id) },
         },
       ];
     }
+
     const comments = await Comment.aggregate([
       { $match: matchStage },
 
@@ -528,7 +620,7 @@ class PropertyController {
 
       { $limit: limitNum + 1 },
 
-      // ✅ Populate user
+      // ✅ Populate parent user
       {
         $lookup: {
           from: 'users',
@@ -539,7 +631,7 @@ class PropertyController {
       },
       { $unwind: '$user' },
 
-      // ✅ Populate agent (for owner check)
+      // ✅ Populate agent
       {
         $lookup: {
           from: 'agents',
@@ -549,6 +641,7 @@ class PropertyController {
         },
       },
 
+      // ✅ Clean parent user
       {
         $project: {
           text: 1,
@@ -556,57 +649,103 @@ class PropertyController {
           property: 1,
           parentComment: 1,
 
-          'user._id': 1,
-          'user.fullName': 1,
-          'user.profileImage': 1,
-          'user.roles': 1,
-          'user.phoneNumber': 1,
+          user: {
+            _id: '$user._id',
+            fullName: '$user.fullName',
+            profileImage: '$user.profileImage',
+            phoneNumber: '$user.phoneNumber',
+            roles: '$user.roles',
+          },
 
           agentId: { $arrayElemAt: ['$agent._id', 0] },
         },
       },
 
-      // ✅ Replies
+      // 🔥 GET ALL REPLIES (ALL LEVELS FLAT)
+      {
+        $graphLookup: {
+          from: 'comments',
+          startWith: '$_id',
+          connectFromField: '_id',
+          connectToField: 'parentComment',
+          as: 'replies',
+          depthField: 'depth',
+        },
+      },
+
+      { $unwind: { path: '$replies', preserveNullAndEmptyArrays: true } },
+
+      // ✅ Populate reply users
       {
         $lookup: {
-          from: 'comments',
-          let: { commentId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $eq: ['$parentComment', '$$commentId'],
-                },
-              },
-            },
-            { $sort: { createdAt: 1 } },
-            { $limit: replyLimitNum },
+          from: 'users',
+          localField: 'replies.user',
+          foreignField: '_id',
+          as: 'replies.user',
+        },
+      },
+      { $unwind: { path: '$replies.user', preserveNullAndEmptyArrays: true } },
 
-            {
-              $lookup: {
-                from: 'users',
-                localField: 'user',
-                foreignField: '_id',
-                as: 'user',
-              },
-            },
-            { $unwind: '$user' },
+      // 🔥 CLEAN replies (THIS FIXES YOUR ISSUE)
+      {
+        $project: {
+          text: 1,
+          createdAt: 1,
+          property: 1,
+          parentComment: 1,
 
-            {
-              $project: {
-                text: 1,
-                createdAt: 1,
-                parentComment: 1,
+          user: 1,
+          agentId: 1,
 
-                'user._id': 1,
-                'user.fullName': 1,
-                'user.profileImage': 1,
-                'user.roles': 1,
-                'user.phoneNumber': 1,
-              },
+          reply: {
+            _id: '$replies._id',
+            text: '$replies.text',
+            createdAt: '$replies.createdAt',
+            parentComment: '$replies.parentComment',
+            user: {
+              _id: '$replies.user._id',
+              fullName: '$replies.user.fullName',
+              profileImage: '$replies.user.profileImage',
+              phoneNumber: '$replies.user.phoneNumber',
+              roles: '$replies.user.roles',
             },
-          ],
-          as: 'replies',
+          },
+        },
+      },
+
+      // ✅ Group back replies
+      {
+        $group: {
+          _id: '$_id',
+          text: { $first: '$text' },
+          createdAt: { $first: '$createdAt' },
+          property: { $first: '$property' },
+          parentComment: { $first: '$parentComment' },
+
+          user: { $first: '$user' },
+          agentId: { $first: '$agentId' },
+
+          replies: { $push: '$reply' },
+        },
+      },
+
+      // ✅ Remove null replies
+      {
+        $addFields: {
+          replies: {
+            $filter: {
+              input: '$replies',
+              as: 'r',
+              cond: { $ne: ['$$r._id', null] },
+            },
+          },
+        },
+      },
+
+      // ✅ Apply reply limit
+      {
+        $addFields: {
+          replies: { $slice: ['$replies', replyLimitNum] },
         },
       },
 
@@ -623,7 +762,7 @@ class PropertyController {
       },
     ]);
 
-    // ✅ cursor logic (same as searchProperties)
+    // ✅ Cursor logic
     let nextCursor = null;
 
     if (comments.length > limitNum) {
@@ -655,23 +794,18 @@ class PropertyController {
       res.status(403);
       throw new Error('You are not an agent');
     }
+    const baseQuery = {
+      isAvailable: true,
+      owner: agent._id,
+      // verificationStatus: 'verified',
+    };
 
-    const features = new PropertySearch(
-      Property.find({ owner: agent._id, isAvailable: true }),
-      req.query,
-    )
+    const features = new PropertySearch(Property.find(baseQuery), req.query)
+      .search()
       .filter()
       .sort()
       .limitFields()
-      .cursorPaginate()
-      .populate({
-        path: 'owner',
-        populate: {
-          path: 'user',
-          select: 'fullName profileImage roles phoneNumber',
-        },
-      });
-
+      .cursorPaginate();
     const properties = await features.query.lean();
 
     res.status(200).json({
@@ -687,7 +821,11 @@ class PropertyController {
 
     validateId.validateMongodbId(id);
 
-    const property = await Property.findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
+    const property = await Property.findByIdAndUpdate(
+      id,
+      { $inc: { views: 1 } },
+      { returnDocument: 'after' },
+    )
       .populate({
         path: 'owner',
         populate: {
@@ -838,11 +976,11 @@ class PropertyController {
   });
 
   static getAgentsPropertiesById = asynchandler(async (req, res) => {
-    const agentId = req.params.id;
+    const userId = req.params.id;
+    console.log('Agent ID:', userId);
+    validateId.validateMongodbId(userId);
 
-    validateId.validateMongodbId(agentId);
-
-    const agent = await Agent.findById(agentId);
+    const agent = await Agent.findOne({ user: userId });
 
     if (!agent) {
       res.status(404);
@@ -856,7 +994,7 @@ class PropertyController {
 
     const features = new PropertySearch(
       Property.find({
-        owner: agentId,
+        owner: agent._id,
         // isDeleted: false,
         isAvailable: true,
       }),
@@ -865,15 +1003,7 @@ class PropertyController {
       .filter()
       .sort()
       .limitFields()
-      .cursorPaginate()
-      .populate({
-        path: 'owner',
-        populate: {
-          path: 'user',
-          select: 'fullName profileImage roles phoneNumber',
-        },
-      });
-
+      .cursorPaginate();
     const properties = await features.query.lean();
 
     res.status(200).json({

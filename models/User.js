@@ -87,13 +87,7 @@ var userSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
-// ensure at least one role
-userSchema.pre('save', function (next) {
-  if (!this.roles || this.roles.length === 0) {
-    this.roles = ['Home_Seeker'];
-  }
-  next();
-});
+
 //Export the model
 const User = mongoose.model('User', userSchema);
 module.exports = User;

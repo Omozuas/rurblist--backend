@@ -43,6 +43,21 @@ Route.patch(
   ]),
   AgentController.updateAgent,
 );
+
+// ===============================
+// CREATE AGENT
+// Authenticated users only
+// ===============================
+Route.patch(
+  '/complete-profile',
+  Checker.authmiddleware,
+  Upload.fields([
+    { name: 'selfie', maxCount: 1 },
+    { name: 'ninSlip', maxCount: 1 },
+    { name: 'cacDoc', maxCount: 1 },
+  ]),
+  AgentController.completeAgentProfile,
+);
 /*
 Route.post(
   '/:agentId/verify',

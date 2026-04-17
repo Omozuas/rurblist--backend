@@ -5,6 +5,7 @@ class PropertySearch {
     this.query = query;
     this.queryString = queryString;
     this.pipeline = [];
+    this.baseFilter = query.getQuery(); // ✅ capture initial filter
   }
 
   /**
@@ -16,6 +17,7 @@ class PropertySearch {
       const keyword = this.queryString.search;
 
       this.query = this.query.find({
+        // ...this.baseFilter,
         $or: [
           { title: { $regex: keyword, $options: 'i' } },
           { description: { $regex: keyword, $options: 'i' } },
@@ -86,7 +88,10 @@ class PropertySearch {
       }
     });
 
-    this.query = this.query.find(parsedQuery);
+    this.query = this.query.find({
+      // ...this.baseFilter, // ✅ PRESERVE owner filter
+      ...parsedQuery,
+    });
 
     console.log(`filter:${this.query}`);
 
@@ -163,6 +168,7 @@ class PropertySearch {
         const parsed = JSON.parse(cursor);
 
         this.query = this.query.find({
+          // ...this.baseFilter, // ✅ PRESERVE owner filter
           $or: [
             {
               [sortField]: isDesc ? { $lt: parsed.value } : { $gt: parsed.value },

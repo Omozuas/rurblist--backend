@@ -1,7 +1,7 @@
 const nodemailer = require('nodemailer');
 
 class SendEmails {
-  static transporter = nodemailer.createTransport({
+  /* static transporter = nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
     port: 465,
@@ -11,13 +11,39 @@ class SendEmails {
       pass: process.env.EMAIL_PASSWORD,
     },
   });
+*/
 
+  static getTransporter(email, password) {
+    return nodemailer.createTransport({
+      host: 'smtp.zoho.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: email,
+        pass: password,
+      },
+    });
+  }
+  static verifyTransporter = SendEmails.getTransporter(
+    process.env.EMAIL_VERIFY,
+    process.env.EMAIL_VERIFY_PASSWORD,
+  );
+
+  static supportTransporter = SendEmails.getTransporter(
+    process.env.EMAIL_SUPPORT,
+    process.env.EMAIL_SUPPORT_PASSWORD,
+  );
+
+  static helloTransporter = SendEmails.getTransporter(
+    process.env.EMAIL_HELLO,
+    process.env.EMAIL_HELLO_PASSWORD,
+  );
   static sendOtpMail = async (email, firstName, otp) => {
-    const rurblistEmail = process.env.EMAIL_USERNAME;
+    const rurblistEmail = process.env.EMAIL_SUPPORT;
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist Support" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist Support" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: 'Your OTP Code - Rurblist',
       text: `Hello ${firstName}, your OTP code is ${otp}. This code will expire in 10 minutes.`,
@@ -96,16 +122,16 @@ class SendEmails {
 `,
     };
 
-    const info = await SendEmails.transporter.sendMail(mailOptions);
+    const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
     return info;
   };
 
   static sendPasswordResetMail = async (email, firstName, resetToken) => {
-    const rurblistEmail = process.env.EMAIL_USERNAME;
+    const rurblistEmail = process.env.EMAIL_SUPPORT;
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist Support" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist Support" <${process.env.EMAIL_SUPPORT}>`,
       to: email,
       subject: 'Password Reset - Rurblist',
       text: `Hello ${firstName}, you requested a password reset. your OTP code is ${resetToken}. This code will expire in 10 minutes.`,
@@ -185,16 +211,16 @@ class SendEmails {
 `,
     };
 
-    const info = await SendEmails.transporter.sendMail(mailOptions);
+    const info = await SendEmails.supportTransporter.sendMail(mailOptions);
     return info;
   };
 
   static sendWelcomeEmail = async (email, firstName) => {
-    const rurblistEmail = process.env.EMAIL_USERNAME;
+    const rurblistEmail = process.env.EMAIL_HELLO;
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
       to: email,
       subject: 'Welcome to Rurblist 🎉',
       text: `Hello ${firstName}, welcome to Rurblist! Your journey to finding your dream property starts here.`,
@@ -258,7 +284,7 @@ Explore Properties
 
 <p>
 <strong>Rurblist Team</strong><br/>
-Helping you find your dream home.
+REAL ESTATE WITHOUT THE RISK.
 </p>
 
 <hr style="border:none;border-top:1px solid #eee;margin:25px 0"/>
@@ -288,17 +314,17 @@ Follow us for updates and property tips!
 </html>`,
     };
 
-    const info = await SendEmails.transporter.sendMail(mailOptions);
+    const info = await SendEmails.helloTransporter.sendMail(mailOptions);
     return info;
   };
 
   static sendPasswordChangeAlertEmail = async (email, firstName) => {
-    const rurblistEmail = process.env.EMAIL_USERNAME;
+    const rurblistEmail = process.env.EMAIL_SUPPORT;
     const currentYear = new Date().getFullYear();
     const time = new Date().toLocaleString();
 
     const mailOptions = {
-      from: `"Rurblist Security" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist Security" <${process.env.EMAIL_SUPPORT}>`,
       to: email,
       subject: 'Security Alert: Your Password Was Changed',
       text: `Hello ${firstName}, your Rurblist account password was changed on ${time}. If you did not perform this action please contact support immediately.`,
@@ -382,16 +408,16 @@ Follow us for updates and property tips!
       </html>`,
     };
 
-    const info = await SendEmails.transporter.sendMail(mailOptions);
+    const info = await SendEmails.supportTransporter.sendMail(mailOptions);
     return info;
   };
 
   static sendAgentApplicationEmail = async (email, firstName) => {
-    const rurblistEmail = process.env.EMAIL_USERNAME;
+    const rurblistEmail = process.env.EMAIL_HELLO;
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
       to: email,
       subject: 'Agent Application Received ✅',
       text: `Hello ${firstName}, we have received your request to become a Rurblist agent. Our team will review your application within 2–3 working days.`,
@@ -490,7 +516,7 @@ Follow us for updates and property tips!
   </html>`,
     };
 
-    const info = await SendEmails.transporter.sendMail(mailOptions);
+    const info = await SendEmails.helloTransporter.sendMail(mailOptions);
     return info;
   };
 
@@ -498,7 +524,7 @@ Follow us for updates and property tips!
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: "Congratulations! You're Now a Rurblist Agent 🎉",
       text: `Hello ${firstName}, your agent application has been approved.`,
@@ -534,14 +560,14 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
 
   static sendAgentRejectionEmail = async (email, firstName) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_SUPPORT}>`,
       to: email,
       subject: 'Update on Your Agent Application',
       text: `Hello ${firstName}, your application was not approved at this time.`,
@@ -580,14 +606,14 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.supportTransporter.sendMail(mailOptions);
   };
 
   static sendAgentMoreInfoEmail = async (email, firstName) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: 'Additional Information Required ⚠️',
       text: `Hello ${firstName}, we need more information to process your application.`,
@@ -633,14 +659,14 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
 
   static sendAdminAgentNotification = async (agentData) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
       to: process.env.ADMIN_EMAIL,
       subject: '🚨 New Agent Application Submitted',
       text: `A new agent has applied.`,
@@ -675,14 +701,14 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.helloTransporter.sendMail(mailOptions);
   };
 
   static sendTourBookingPaymentEmail = async (email, firstName, tour) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: 'Tour Booking Pending Payment ⏳',
 
@@ -740,7 +766,7 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
 
   static sendTourRescheduleEmail = async (email, firstName, tour) => {
@@ -758,7 +784,7 @@ Follow us for updates and property tips!
   &dates=${formatDate(tour.date)}/${formatDate(endDate)}`;
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
       to: email,
       subject: 'Tour Rescheduled 🔄',
 
@@ -810,7 +836,7 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.helloTransporter.sendMail(mailOptions);
   };
 
   static sendTourCancelEmail = async (email, firstName, tour) => {
@@ -827,7 +853,7 @@ Follow us for updates and property tips!
   &dates=${formatDate(tour.date)}/${formatDate(endDate)}`;
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_SUPPORT}>`,
       to: email,
       subject: 'Tour Cancelled ❌',
 
@@ -893,14 +919,14 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.supportTransporter.sendMail(mailOptions);
   };
 
   static sendPaymentReceiptEmail = async (email, firstName, payment, pdfBuffer) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: 'Payment Successful 💰',
 
@@ -988,14 +1014,14 @@ Follow us for updates and property tips!
       ],
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
 
   static sendPlanActivationEmail = async (email, firstName, plan) => {
     const currentYear = new Date().getFullYear();
 
     const mailOptions = {
-      from: `"Rurblist" <${process.env.EMAIL_USERNAME}>`,
+      from: `"Rurblist" <${process.env.EMAIL_VERIFY}>`,
       to: email,
       subject: `Your ${plan.name} Plan is Now Active 🚀`,
 
@@ -1058,7 +1084,7 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.transporter.sendMail(mailOptions);
+    return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
 }
 
