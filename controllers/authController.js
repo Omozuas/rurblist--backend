@@ -514,8 +514,8 @@ class AuthController {
     user.otp = undefined;
     user.otpExpires = undefined;
 
-    const refreshToken = jwtToken.generateRefreshToken(user.id, user.role);
-    const accessToken = jwtToken.generateToken(user.id, user.role, user.email);
+    const refreshToken = jwtToken.generateRefreshToken(user);
+    const accessToken = jwtToken.generateToken(user);
 
     user.refreshToken = refreshToken;
     user.isLogin = true;

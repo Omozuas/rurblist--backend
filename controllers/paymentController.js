@@ -24,7 +24,7 @@ class PaymentController {
    */
   static payForTour = asyncHandler(async (req, res) => {
     const { tourId } = req.params;
-    const { currency = 'NGN' } = req.body;
+    const { currency = 'NGN', paymentMethod } = req.body;
     const user = req.user;
 
     const tour = await Tour.findById(tourId).populate('property').populate('agent');
@@ -66,9 +66,13 @@ class PaymentController {
         amount: convertToSmallestUnit(tour.price, currency),
         currency,
         reference,
+        channels: [paymentMethod],
         metadata: {
           paymentId: payment._id,
           type: 'tour',
+          // ✅ EXTRA METADATA (VERY USEFUL)
+          userName: user.fullName,
+          userPhone: user.phoneNumber,
         },
         callback_url: `${process.env.CLIENT_URL}/payment-success`,
       },
@@ -159,13 +163,13 @@ class PaymentController {
   static webhook = async (req, res) => {
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
-    const hash = crypto.createHmac('sha512', secret).update(req.rawBody).digest('hex');
+    const hash = crypto.createHmac('sha512', secret).update(req.body).digest('hex');
 
     if (hash !== req.headers['x-paystack-signature']) {
       return res.status(400).send('Invalid signature');
     }
 
-    const event = JSON.parse(req.rawBody.toString());
+    const event = JSON.parse(req.body.toString());
 
     const data = event.data;
 
@@ -200,6 +204,7 @@ class PaymentController {
         payment.transactionId = data.id;
         payment.paidAt = new Date();
         payment.receiptSent = true;
+        payment.paymentMethod = data.channel;
         await payment.save();
 
         // ===============================
@@ -322,6 +327,7 @@ class PaymentController {
     // ===============================
     payment.status = 'success';
     payment.transactionId = data.id;
+    payment.paymentMethod = data.channel;
     payment.paidAt = new Date();
 
     await payment.save();

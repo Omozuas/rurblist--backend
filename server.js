@@ -17,6 +17,7 @@ const propertyRoutes = require('./routes/property.route');
 const agentRoutes = require('./routes/agent.route');
 const paymentRoutes = require('./routes/payment.route');
 const tourRoutes = require('./routes/tour.route');
+require('./cron/pingServer');
 
 //load env
 dotenv.config();
