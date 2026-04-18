@@ -33,7 +33,9 @@ const paymentSchema = new mongoose.Schema(
       enum: ['tour', 'property', 'subscription', 'refund'],
       required: true,
     },
-
+    paymentMethod: {
+      type: String,
+    },
     // 💰 Financials
     amount: {
       type: Number,

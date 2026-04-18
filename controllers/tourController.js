@@ -313,6 +313,29 @@ class TourController {
       data: conversations,
     });
   });
+
+  static getTourById = asynchandler(async (req, res) => {
+    const { id } = req.params;
+    const tour = await Tour.findById(id)
+      .populate('property', 'title location')
+      .populate({
+        path: 'user',
+        select: 'fullName email',
+      })
+      .populate({
+        path: 'agent',
+        select: 'lastName firstName',
+      });
+
+    if (!tour) {
+      res.status(404);
+      throw new Error('Tour not found');
+    }
+
+    res.status(200).json({
+      data: tour,
+    });
+  });
 }
 
 module.exports = TourController;

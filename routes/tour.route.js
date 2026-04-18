@@ -33,6 +33,9 @@ Route.get('/user', Checker.authmiddleware, TourController.getUserTours);
 // 📥 Get tours (agent)
 Route.get('/agent', Checker.authmiddleware, TourController.getAgentTours);
 
+// 📥 Get tours (agent)
+Route.get('/:id', Checker.authmiddleware, TourController.getTourById);
+
 // 📥 Get messages in a conversation
 Route.get('/:conversationId', Checker.authmiddleware, TourController.getMessages);
 
