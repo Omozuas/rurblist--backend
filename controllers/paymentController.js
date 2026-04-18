@@ -414,6 +414,34 @@ class PaymentController {
 
     generateReceipt(payment, res);
   });
+
+  /**
+   * ✅ Get PAYMENT BY Reference(FALLBACK)
+   */
+  static getPaymentByReference = asyncHandler(async (req, res) => {
+    const { reference, trxref } = req.params;
+
+    // ✅ support both Paystack params
+    const paymentRef = reference || trxref;
+
+    if (!paymentRef) {
+      res.status(400);
+      throw new Error('Reference or trxref is required');
+    }
+
+    const payment = await Payment.findOne({ reference: paymentRef });
+
+    // ❗ Handle not found
+    if (!payment) {
+      res.status(404);
+      throw new Error('Payment not found');
+    }
+
+    res.status(200).json({
+      success: true,
+      data: payment,
+    });
+  });
 }
 
 module.exports = PaymentController;

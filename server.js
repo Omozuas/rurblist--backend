@@ -32,7 +32,7 @@ app.set('query parser', 'extended');
 //app use
 app.use(
   cors({
-    origin: ['http://localhost:3000', 'http://192.168.1.161:3000'],
+    origin: ['http://localhost:3000', 'http://192.168.1.161:3000', 'https://rurblist.netlify.app'],
     credentials: true,
   }),
 );
