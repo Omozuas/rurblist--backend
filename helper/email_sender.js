@@ -1086,6 +1086,77 @@ Follow us for updates and property tips!
 
     return await SendEmails.verifyTransporter.sendMail(mailOptions);
   };
+
+  static sendTourConfirmedEmail = async (email, firstName, tour) => {
+    const currentYear = new Date().getFullYear();
+
+    // ⏰ 1-hour duration
+    const endDate = new Date(new Date(tour.date).getTime() + 60 * 60 * 1000);
+
+    const formatDate = (date) => new Date(date).toISOString().replace(/-|:|\.\d+/g, '');
+
+    const calendarLink = `https://www.google.com/calendar/render?action=TEMPLATE
+  &text=${encodeURIComponent('Property Tour (Confirmed)')}
+  &details=${encodeURIComponent(`Tour Type: ${tour.tourType}`)}
+  &location=${encodeURIComponent('Property Location')}
+  &dates=${formatDate(tour.date)}/${formatDate(endDate)}`;
+
+    const mailOptions = {
+      from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
+      to: email,
+      subject: 'Tour Confirmed ✅',
+
+      text: `Hello ${firstName}, your property tour has been confirmed.`,
+
+      html: `
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial; background:#f9f9f9; padding:20px;">
+    <table style="max-width:600px;margin:auto;background:#fff;padding:30px;border-radius:8px">
+
+    <h2 style="color:#ec6c10;">Hello ${firstName},</h2>
+
+    <p>
+      Your property tour has been <strong>confirmed</strong> ✅
+    </p>
+
+    <div style="background:#e8f5e9;padding:15px;border-left:5px solid #4caf50;margin:20px 0;">
+      🎉 Your booking is secured. Please arrive on time.
+    </div>
+
+    <h3>📋 Tour Details</h3>
+    <ul>
+      <li>📅 Date: ${new Date(tour.date).toDateString()}</li>
+      <li>⏰ Time: ${new Date(tour.date).toLocaleTimeString()}</li>
+      <li>🏠 Tour Type: ${tour.tourType}</li>
+      <li>💰 Price: ${tour.price}</li>
+      <li>📍 Location: ${tour.property?.location?.address || 'N/A'}</li>
+    </ul>
+
+    <p style="margin:25px 0;">
+      <a href="${calendarLink}" 
+      style="background:#ec6c10;color:#fff;padding:12px 20px;text-decoration:none;border-radius:5px;">
+      Add to Google Calendar
+      </a>
+    </p>
+
+    <p>
+      We look forward to helping you explore your future home 🏡
+    </p>
+
+    <p><strong>Rurblist Team</strong></p>
+
+    <hr/>
+    <p style="font-size:12px;color:#777;">© ${currentYear} Rurblist</p>
+
+    </table>
+    </body>
+    </html>
+    `,
+    };
+
+    return await SendEmails.helloTransporter.sendMail(mailOptions);
+  };
 }
 
 module.exports = SendEmails;

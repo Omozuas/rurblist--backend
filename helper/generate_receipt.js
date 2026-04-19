@@ -431,6 +431,16 @@ const generateReceipt = (payment, res) => {
     y += 20;
   }
 
+  if (payment.tour) {
+    doc
+      .text(`Tour: ${payment.tour.tourType}`, 50, y)
+      .text('1', 300, y)
+      .text(payment.amount.toLocaleString(), 350, y)
+      .text(payment.amount.toLocaleString(), 450, y);
+
+    y += 20;
+  }
+
   // ===============================
   // 📦 PLAN ROW
   // ===============================

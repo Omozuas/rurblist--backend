@@ -251,7 +251,7 @@ class PaymentController {
 
           if (tour && !tour.paid) {
             tour.paid = true;
-            tour.status = 'confirmed';
+            tour.status = 'paid';
             tour.expiresAt = null;
             await tour.save();
           }
@@ -376,7 +376,7 @@ class PaymentController {
 
       if (tour) {
         tour.paid = true;
-        tour.status = 'confirmed';
+        tour.status = 'paid';
         tour.expiresAt = null;
         await tour.save();
       }
@@ -408,7 +408,7 @@ class PaymentController {
 
     // 🔐 Only owner can download
     if (payment.user._id.toString() !== req.user._id.toString()) {
-      res.status(403);
+      res.status(400);
       throw new Error('Not authorized');
     }
 

@@ -56,7 +56,7 @@ const tourSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'rescheduled', 'cancelled'],
+      enum: ['pending', 'confirmed', 'rescheduled', 'cancelled', 'paid'],
       default: 'pending',
     },
     // ⏱ Expiry field (AUTO DELETE)
