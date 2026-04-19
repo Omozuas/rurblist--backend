@@ -56,8 +56,14 @@ class AuthController {
     try {
       const isExisting = await User.findOne({ email: email });
       if (isExisting) {
-        res.status(401);
+        res.status(400);
         throw new Error('Email Already Exists');
+      }
+      const isPhoneExisting = await User.findOne({ phoneNumber });
+
+      if (isPhoneExisting) {
+        res.status(400);
+        throw new Error('Phone number already exists');
       }
       const hashedPassword = await bcrypt.hash(password, 10);
       // GENERATE OTP
@@ -226,24 +232,7 @@ class AuthController {
       refreshToken: refreshToken,
       isLogin: true,
     });
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge: 72 * 60 * 60 * 1000,
-    });
-    res.cookie('rublist_auth', accessToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge: 72 * 60 * 60 * 1000,
-    });
-    res.cookie('rublist_role', isExisting.roles, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-    });
+
     return res.status(200).json({
       data: {
         token: accessToken,
