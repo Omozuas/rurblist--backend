@@ -196,6 +196,7 @@ class TourController {
 
   static confirmTour = asynchandler(async (req, res) => {
     const { tourId } = req.params;
+    const { note } = req.body;
 
     const tour = await Tour.findById(tourId)
       .populate('user', 'email fullName phoneNumber _id')
@@ -235,6 +236,7 @@ class TourController {
 
     // ✅ Confirm tour
     tour.status = 'confirmed';
+    tour.note = note;
 
     await tour.save();
 
@@ -254,11 +256,11 @@ class TourController {
   static getUserTours = asynchandler(async (req, res) => {
     const tours = await Tour.find({ user: req.user._id })
       .populate('property', 'title location')
-      .populate('user', 'fullName email roles')
+      .populate('user', 'fullName email roles profileImage')
       .populate({
         path: 'agent',
         select: 'firstName _id lastName',
-        populate: { path: 'user', select: 'fullName email roles' },
+        populate: { path: 'user', select: 'fullName email roles profileImage' },
       })
       .sort({ createdAt: -1 });
 
@@ -271,17 +273,31 @@ class TourController {
    * 📥 GET AGENT TOURS
    */
   static getAgentTours = asynchandler(async (req, res) => {
-    const tours = await Tour.find({ agent: req.user._id })
+    // ✅ Step 1: Find agent by user
+    const agent = await Agent.findOne({ user: req.user._id });
+
+    if (!agent) {
+      res.status(404);
+      throw new Error('Agent profile not found');
+    }
+
+    // ✅ Step 2: Get tours using agent._id
+    const tours = await Tour.find({ agent: agent._id })
       .populate('property', 'title location')
-      .populate('user', 'fullName email roles')
+      .populate('user', 'fullName email roles profileImage')
       .populate({
         path: 'agent',
-        select: 'firstName _id lastName',
-        populate: { path: 'user', select: 'fullName email roles' },
+        select: '_id',
+        populate: {
+          path: 'user',
+          select: 'fullName email roles profileImage',
+        },
       })
       .sort({ createdAt: -1 });
 
     res.status(200).json({
+      success: true,
+      count: tours.length,
       data: tours,
     });
   });
