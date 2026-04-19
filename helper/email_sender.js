@@ -102,7 +102,7 @@ class SendEmails {
         <a href="mailto:${rurblistEmail}" style="color: #ec6c10">
           ${rurblistEmail}
         </a><br />
-        <strong>Phone:</strong> 1-800-RURBLIST
+        <strong>Phone:</strong> 08154155124
       </p>
 
       <p>Best regards,</p>
@@ -191,7 +191,7 @@ class SendEmails {
         <a href="mailto:${rurblistEmail}" style="color: #ec6c10">
           ${rurblistEmail}
         </a><br />
-        <strong>Phone:</strong> 1-800-RURBLIST
+        <strong>Phone:</strong> 08154155124
       </p>
 
       <p>Best regards,</p>
@@ -743,7 +743,7 @@ Follow us for updates and property tips!
     </ul>
 
     <p style="margin:30px 0;">
-      <a href="${process.env.FRONTEND_URL}/pay/${tour._id}" 
+      <a href="${process.env.FRONTEND_URL}/payment-tour/${tour._id}" 
       style="background:#ec6c10;color:#fff;padding:12px 20px;text-decoration:none;border-radius:5px;">
       Complete Payment
       </a>
@@ -986,7 +986,7 @@ Follow us for updates and property tips!
     }
 
     <p style="margin:25px 0;">
-      <a href="${process.env.CLIENT_URL}/payments/${payment._id}" 
+      <a href="${process.env.FRONTEND_URL}/payments/${payment._id}" 
       style="background:#ec6c10;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
       View Payment
       </a>
@@ -1063,7 +1063,7 @@ Follow us for updates and property tips!
       </div>
 
       <p style="margin:25px 0;">
-        <a href="${process.env.CLIENT_URL}/properties" 
+        <a href="${process.env.FRONTEND_URL}/properties" 
         style="background:#ec6c10;color:#fff;padding:12px 18px;text-decoration:none;border-radius:5px;">
         Browse Properties
         </a>
