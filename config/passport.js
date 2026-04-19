@@ -61,7 +61,7 @@ passport.use(
           fullName: profile.displayName,
           email,
           password: hashedPassword,
-          phoneNumber: 'google-oauth',
+          phoneNumber: null,
           isEmailVerified: true,
           profileImage: {
             url: profileImage,
