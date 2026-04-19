@@ -194,12 +194,71 @@ class TourController {
     });
   });
 
+  static confirmTour = asynchandler(async (req, res) => {
+    const { tourId } = req.params;
+
+    const tour = await Tour.findById(tourId)
+      .populate('user', 'email fullName phoneNumber _id')
+      .populate({
+        path: 'agent',
+        select: '_id user',
+        populate: {
+          path: 'user',
+          select: 'email fullName phoneNumber _id',
+        },
+      })
+      .populate('property', 'location.address title _id');
+
+    // ❗ Not found
+    if (!tour) {
+      res.status(404);
+      throw new Error('Tour not found');
+    }
+
+    // ❗ Already cancelled
+    if (tour.status === 'cancelled') {
+      res.status(400);
+      throw new Error('Tour already cancelled');
+    }
+
+    // ❗ Already confirmed
+    if (tour.status === 'confirmed') {
+      res.status(400);
+      throw new Error('Tour already confirmed');
+    }
+
+    // 🔥 IMPORTANT: Check payment
+    if (!tour.paid) {
+      res.status(400);
+      throw new Error('Cannot confirm unpaid tour');
+    }
+
+    // ✅ Confirm tour
+    tour.status = 'confirmed';
+
+    await tour.save();
+
+    // ✅ Send correct emails
+    await Promise.all([
+      SendEmails.sendTourConfirmedEmail(tour.user.email, tour.user.fullName, tour),
+      SendEmails.sendTourConfirmedEmail(tour.agent.user.email, tour.agent.user.fullName, tour),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'Tour confirmed successfully',
+      data: tour,
+    });
+  });
+
   static getUserTours = asynchandler(async (req, res) => {
     const tours = await Tour.find({ user: req.user._id })
       .populate('property', 'title location')
+      .populate('user', 'fullName email roles')
       .populate({
         path: 'agent',
-        populate: { path: 'user', select: 'fullName email' },
+        select: 'firstName _id lastName',
+        populate: { path: 'user', select: 'fullName email roles' },
       })
       .sort({ createdAt: -1 });
 
@@ -214,7 +273,12 @@ class TourController {
   static getAgentTours = asynchandler(async (req, res) => {
     const tours = await Tour.find({ agent: req.user._id })
       .populate('property', 'title location')
-      .populate('user', 'fullName email')
+      .populate('user', 'fullName email roles')
+      .populate({
+        path: 'agent',
+        select: 'firstName _id lastName',
+        populate: { path: 'user', select: 'fullName email roles' },
+      })
       .sort({ createdAt: -1 });
 
     res.status(200).json({

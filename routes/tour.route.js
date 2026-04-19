@@ -21,6 +21,13 @@ Route.put(
   TourController.rescheduleTour,
 );
 
+Route.put(
+  '/confirm/:tourId',
+  Checker.authmiddleware,
+  Checker.allowRoles('Agent', 'Landlord', 'Admin'),
+  TourController.confirmTour,
+);
+
 // ===============================
 // CANCEL TOUR
 // Authenticated users only
