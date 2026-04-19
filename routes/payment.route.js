@@ -15,4 +15,7 @@ Route.get('/verify', Checker.authmiddleware, PaymentController.verifyPayment);
 Route.post('/webhook', PaymentController.webhook);
 
 Route.get('/:paymentId/receipt', Checker.authmiddleware, PaymentController.downloadReceipt);
+
+Route.get('/reference/:reference', Checker.authmiddleware, PaymentController.getPaymentByReference);
+
 module.exports = Route;
