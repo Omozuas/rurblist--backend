@@ -94,13 +94,23 @@ class PaymentController {
    */
   static payForProperty = asyncHandler(async (req, res) => {
     const { propertyId } = req.params;
-    const { currency = 'NGN', planId } = req.body;
+    const { currency = 'NGN', planId, enscrowFee, paymentMethod } = req.body;
     const user = req.user;
+    // console.log(req.body);
+    const property = await Property.findById(propertyId).populate('owner');
+    // console.log(property);
+    if (!property) {
+      res.status(400);
+      throw new Error('Property not found');
+    }
+    const parsedEscrowFee = Number(enscrowFee || 0);
+    if (Number.isNaN(parsedEscrowFee) || parsedEscrowFee < 0) {
+      res.status(400);
+      throw new Error('Invalid enscrowFee');
+    }
 
-    const property = await Property.findById(propertyId).populate('agent');
-
-    if (!property) throw new Error('Property not found');
-    let totalAmount = property.price;
+    let totalAmount =
+      Number(property.price || 0) + Number(property.agentFee || 0) + parsedEscrowFee;
     let selectedPlan = null;
 
     // ===============================
@@ -108,8 +118,9 @@ class PaymentController {
     // ===============================
     if (planId) {
       const plan = await Plan.findById(planId);
-
+      // console.log(plan);
       if (!plan || !plan.isActive) {
+        res.status(400);
         throw new Error('Invalid plan');
       }
 
@@ -127,6 +138,7 @@ class PaymentController {
       amount: totalAmount,
       currency,
       reference,
+      enscrowFee: parsedEscrowFee,
       plan: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
     });
 
@@ -134,13 +146,21 @@ class PaymentController {
       `${PAYSTACK_BASE_URL}/transaction/initialize`,
       {
         email: user.email,
-        amount: convertToSmallestUnit(property.price, currency),
+        amount: convertToSmallestUnit(totalAmount, currency),
         currency,
         reference,
+        channels: [paymentMethod],
         metadata: {
           paymentId: payment._id,
           type: 'property',
           planId: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
+          totalAmount,
+          propertyPrice: property.price,
+          agentFee: property.agentFee || 0,
+          enscrowFee: parsedEscrowFee,
+          // ✅ EXTRA METADATA (VERY USEFUL)
+          userName: user.fullName,
+          userPhone: user.phoneNumber,
         },
         callback_url: `${process.env.CLIENT_URL}/payment-success`,
       },
@@ -150,7 +170,7 @@ class PaymentController {
         },
       },
     );
-
+    console.log(response);
     res.json({
       message: 'Payment initialized',
       data: response.data.data,
@@ -237,7 +257,7 @@ class PaymentController {
         // 🏠 PROPERTY PAYMENT
         // ===============================
         if (payment.paymentFor === 'property') {
-          const property = payment.property;
+          const property = Property.findById(payment.property);
 
           if (property) {
             property.isSold = true; // optional business logic

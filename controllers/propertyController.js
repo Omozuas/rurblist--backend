@@ -3,12 +3,14 @@ const asynchandler = require('express-async-handler');
 const PropertySearch = require('../helper/propertyQueryDb');
 const Property = require('../models/Property');
 const Agent = require('../models/Agent');
+const HomeSeeker = require('../models/HomeSeeker');
 const Comment = require('../models/Comment');
 const validateId = require('../helper/validatemongodb');
 const UploadCloud = require('../config/cloudnary');
 const slugify = require('slugify');
 const fs = require('fs');
 const mongoose = require('mongoose');
+const DojahService = require('../config/dojahService');
 
 class PropertyController {
   /*
@@ -1154,6 +1156,107 @@ class PropertyController {
       res.status(500);
       throw new Error(error.message || 'Failed to create property');
     }
+  });
+
+  static verfyBuyer = asynchandler(async (req, res) => {
+    const { id } = req.params;
+    const user = req.user;
+
+    let homeSeeker = null;
+    let agent = null;
+    let profile = null;
+    let roleFolder = null;
+
+    if (user.roles.includes('Home_Seeker')) {
+      homeSeeker = await HomeSeeker.findOne({ user: user._id });
+    }
+
+    if (user.roles.includes('Agent')) {
+      agent = await Agent.findOne({ user: user._id });
+    }
+
+    if (homeSeeker) {
+      profile = homeSeeker;
+      roleFolder = 'homeseeker';
+    } else if (agent) {
+      profile = agent;
+      roleFolder = 'agents';
+    }
+
+    if (!profile) {
+      res.status(403);
+      throw new Error('Unauthorized role or profile not found');
+    }
+
+    if (profile.status === 'approved' && profile.kycStatus?.ninVerified === true) {
+      return res.status(200).json({
+        success: true,
+        message: 'Buyer already verified',
+        data: profile,
+      });
+    }
+
+    const nin = req.body?.nin?.trim();
+    const ninFile = req.files?.nin?.[0] || req.files?.ninSlip?.[0];
+
+    if (!nin) {
+      res.status(400);
+      throw new Error('NIN is required');
+    }
+    if (nin.length !== 11) {
+      res.status(400);
+      throw new Error('Invalid NIN');
+    }
+
+    if (!ninFile) {
+      res.status(400);
+      throw new Error('NIN image is required');
+    }
+    /*
+    const verifyResult = await DojahService.verifyNIN(nin);
+
+    if (!verifyResult.success) {
+      res.status(400);
+      throw new Error('NIN verification failed');
+    }
+
+    if (!verifyResult.isValid) {
+      res.status(400);
+      throw new Error('NIN is not valid');
+    }
+*/
+    const uploaded = await UploadCloud.upload(ninFile.path, `rublist/${roleFolder}/ninSlip`);
+    await fs.promises.unlink(ninFile.path);
+
+    profile.nin = nin;
+    profile.ninSlipUrl = {
+      url: uploaded.url,
+      public_id: uploaded.public_id,
+    };
+    profile.kycStatus.ninVerified = true;
+    // profile.verificationData.nin = verifyResult.data;
+    // profile.status = 'approved';
+    profile.status = 'under_review';
+
+    await profile.save();
+    if (roleFolder === 'homeseeker') homeSeeker = profile;
+    if (roleFolder === 'agents') agent = profile;
+
+    validateId.validateMongodbId(id);
+    const property = await Property.findById(id);
+    if (!property) {
+      res.status(404);
+      throw new Error('Property not found');
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'NIN submitted successfully',
+      data: {
+        homeSeeker,
+        agent,
+      },
+    });
   });
 }
 

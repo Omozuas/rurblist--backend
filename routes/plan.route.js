@@ -6,6 +6,8 @@ const Checker = require('../middlewares/checker');
 // ✅ ADMIN ONLY
 Route.post('/', Checker.authmiddleware, Checker.allowRoles('Admin'), PlanController.createPlan);
 
-Route.get('/', PlanController.getPlans);
+Route.get('/', Checker.authmiddleware, PlanController.getPlans);
+
+Route.get('/:id', Checker.authmiddleware, PlanController.getPlanById);
 
 module.exports = Route;

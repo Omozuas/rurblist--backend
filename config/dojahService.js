@@ -1,32 +1,47 @@
 const axios = require('axios');
 
-const DOJAH_BASE_URL = 'https://api.dojah.io/api/v1';
+const DOJAH_BASE_URL = process.env.DOJAH_BASE_URL || 'https://sandbox.dojah.io/api/v1';
 
-const headers = {
-  AppId: process.env.DOJAH_APP_ID,
-  Authorization: process.env.DOJAH_SECRET_KEY,
-  'Content-Type': 'application/json',
-};
+function getHeaders() {
+  const appId = process.env.DOJAH_APP_ID;
+  const secretKey = process.env.DOJAH_SECRET_KEY;
+
+  if (!appId) {
+    throw new Error('DOJAH_APP_ID is missing');
+  }
+
+  if (!secretKey) {
+    throw new Error('DOJAH_SECRET_KEY is missing');
+  }
+
+  return {
+    AppId: appId,
+    Authorization: secretKey,
+    'Content-Type': 'application/json',
+  };
+}
 
 class DojahService {
   /**
-   * ✅ VERIFY NIN
-   * @param {String} nin
+   * VERIFY NIN
+   * @param {string} nin
    */
   static async verifyNIN(nin) {
     try {
-      if (!nin) throw new Error('NIN is required');
+      if (!nin) {
+        throw new Error('NIN is required');
+      }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/nin`, {
-        headers,
-        params: { nin },
+        headers: getHeaders(),
+        params: { nin: nin.toString() },
       });
 
       const data = response.data;
 
       return {
         success: true,
-        isValid: !!data?.entity,
+        isValid: !!data?.entity || !!data,
         data,
       };
     } catch (error) {
@@ -35,21 +50,24 @@ class DojahService {
       return {
         success: false,
         isValid: false,
+        status: error.response?.status || 500,
         error: error.response?.data || error.message,
       };
     }
   }
 
   /**
-   * ✅ VERIFY CAC
-   * @param {String} cacNumber
+   * VERIFY CAC
+   * @param {string} cacNumber
    */
   static async verifyCAC(cacNumber) {
     try {
-      if (!cacNumber) throw new Error('CAC number is required');
+      if (!cacNumber) {
+        throw new Error('CAC number is required');
+      }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/cac`, {
-        headers,
+        headers: getHeaders(),
         params: { rc_number: cacNumber },
       });
 
@@ -57,7 +75,7 @@ class DojahService {
 
       return {
         success: true,
-        isValid: !!data?.entity,
+        isValid: !!data?.entity || !!data,
         data,
       };
     } catch (error) {
@@ -66,20 +84,24 @@ class DojahService {
       return {
         success: false,
         isValid: false,
+        status: error.response?.status || 500,
         error: error.response?.data || error.message,
       };
     }
   }
 
-  // ===============================
-  // ✅ VERIFY BVN
-  // ===============================
+  /**
+   * VERIFY BVN
+   * @param {string} bvn
+   */
   static async verifyBVN(bvn) {
     try {
-      if (!bvn) throw new Error('BVN is required');
+      if (!bvn) {
+        throw new Error('BVN is required');
+      }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/bvn`, {
-        headers,
+        headers: getHeaders(),
         params: { bvn },
       });
 
@@ -87,7 +109,7 @@ class DojahService {
 
       return {
         success: true,
-        isValid: !!data?.entity,
+        isValid: !!data?.entity || !!data,
         data,
       };
     } catch (error) {
@@ -96,33 +118,33 @@ class DojahService {
       return {
         success: false,
         isValid: false,
+        status: error.response?.status || 500,
         error: error.response?.data || error.message,
       };
     }
   }
 
-  // ===============================
-  // ✅ VERIFY LIVENESS
-  // ===============================
+  /**
+   * VERIFY LIVENESS
+   * @param {string} imageUrl
+   */
   static async verifyLiveness(imageUrl) {
     try {
-      if (!imageUrl) throw new Error('Image is required for liveness');
+      if (!imageUrl) {
+        throw new Error('Image is required for liveness');
+      }
 
       const response = await axios.post(
         `${DOJAH_BASE_URL}/kyc/liveness`,
-        {
-          image: imageUrl, // 👈 can be URL or base64 depending on Dojah setup
-        },
-        {
-          headers,
-        },
+        { image: imageUrl },
+        { headers: getHeaders() },
       );
 
       const data = response.data;
 
       return {
         success: true,
-        isValid: data?.status === 'success' || data?.live === true,
+        isValid: data?.status === 'success' || data?.live === true || !!data,
         data,
       };
     } catch (error) {
@@ -131,6 +153,7 @@ class DojahService {
       return {
         success: false,
         isValid: false,
+        status: error.response?.status || 500,
         error: error.response?.data || error.message,
       };
     }
