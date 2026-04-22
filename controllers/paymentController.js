@@ -153,11 +153,11 @@ class PaymentController {
         metadata: {
           paymentId: payment._id,
           type: 'property',
-          planId: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
-          totalAmount,
-          propertyPrice: property.price,
-          agentFee: property.agentFee || 0,
-          enscrowFee: parsedEscrowFee,
+          // planId: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
+          // totalAmount,
+          // propertyPrice: property.price,
+          // agentFee: property.agentFee || 0,
+          // enscrowFee: parsedEscrowFee,
           // ✅ EXTRA METADATA (VERY USEFUL)
           userName: user.fullName,
           userPhone: user.phoneNumber,
