@@ -81,7 +81,6 @@ const paymentSchema = new mongoose.Schema(
     },
     enscrowFee: {
       type: Number,
-      required: true,
     },
   },
   { timestamps: true },
