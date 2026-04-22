@@ -17,6 +17,7 @@ const propertyRoutes = require('./routes/property.route');
 const agentRoutes = require('./routes/agent.route');
 const paymentRoutes = require('./routes/payment.route');
 const tourRoutes = require('./routes/tour.route');
+const planRoutes = require('./routes/plan.route');
 // require('./cron/pingServer');
 
 //load env
@@ -58,6 +59,7 @@ app.use('/api/property', propertyRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/tours', tourRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/plans', planRoutes);
 
 //error handlers
 app.use(errorhandler.notfound);

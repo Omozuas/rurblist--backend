@@ -72,17 +72,16 @@ const paymentSchema = new mongoose.Schema(
 
     paidAt: Date,
 
-    // 🔁 Refund linking
-    relatedPayment: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Payment',
-    },
     receiptSent: {
       type: Boolean,
       default: false,
     },
     metadata: {
       type: Object,
+    },
+    enscrowFee: {
+      type: Number,
+      required: true,
     },
   },
   { timestamps: true },

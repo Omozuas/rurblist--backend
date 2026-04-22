@@ -80,6 +80,21 @@ const agentSchema = new mongoose.Schema(
         ref: 'Property',
       },
     ],
+    // ===============================
+    // 🔥 PLAN SYSTEM
+    // ===============================
+    plan: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Plan',
+      default: null,
+    },
+
+    isPlanActive: {
+      type: Boolean,
+      default: false,
+    },
+
+    planActivatedAt: Date,
   },
   { timestamps: true },
 );

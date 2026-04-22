@@ -3,6 +3,7 @@ const userController = require('../controllers/userController');
 const checker = require('../middlewares/checker');
 const Upload = require('../helper/multer');
 const rateLimit = require('express-rate-limit');
+const KycController = require('../controllers/kycController');
 
 const passwordChangeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -15,8 +16,10 @@ const passwordChangeLimiter = rateLimit({
 
 // ✅ ADMIN
 Route.get('/', checker.authmiddleware, checker.allowRoles('Admin'), userController.getUsers);
+Route.get('/verify-nin', KycController.verifyNIN);
+Route.get('/verify-bvn', KycController.verifyBVN);
+Route.get('/verify-cac', KycController.verifyCAC);
 
-// ✅ CURRENT USER
 Route.get('/me', checker.authmiddleware, userController.getCurrentUser);
 Route.get('/saved', checker.authmiddleware, userController.getSavedProperties);
 

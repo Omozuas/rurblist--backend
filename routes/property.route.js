@@ -16,6 +16,18 @@ Route.post(
 );
 
 // ===============================
+// VERIFY BUYER
+// ===============================
+Route.post(
+  '/:id/verify-buyer',
+  Checker.authmiddleware,
+  Checker.allowRoles('Home_Seeker', 'Agent'),
+  Upload.fields([
+    { name: 'ninSlip', maxCount: 1 }, // KYC
+  ]),
+  PropertyController.verfyBuyer,
+);
+// ===============================
 // MY PROPERTIES
 // ===============================
 Route.get(
