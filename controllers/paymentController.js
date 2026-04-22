@@ -96,9 +96,9 @@ class PaymentController {
     const { propertyId } = req.params;
     const { currency = 'NGN', planId, enscrowFee, paymentMethod } = req.body;
     const user = req.user;
-    console.log(req.body);
+    // console.log(req.body);
     const property = await Property.findById(propertyId).populate('owner');
-    console.log(property);
+    // console.log(property);
     if (!property) {
       res.status(400);
       throw new Error('Property not found');
@@ -118,7 +118,7 @@ class PaymentController {
     // ===============================
     if (planId) {
       const plan = await Plan.findById(planId);
-      console.log(plan);
+      // console.log(plan);
       if (!plan || !plan.isActive) {
         res.status(400);
         throw new Error('Invalid plan');
