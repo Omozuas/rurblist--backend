@@ -74,7 +74,7 @@ class PaymentController {
           userName: user.fullName,
           userPhone: user.phoneNumber,
         },
-        callback_url: `${process.env.CLIENT_URL}/payment-success`,
+        callback_url: `${process.env.FRONTEND_URl}/payment-tour/success`,
       },
       {
         headers: {
@@ -96,36 +96,47 @@ class PaymentController {
     const { propertyId } = req.params;
     const { currency = 'NGN', planId, enscrowFee, paymentMethod } = req.body;
     const user = req.user;
-    // console.log(req.body);
+
     const property = await Property.findById(propertyId).populate('owner');
-    // console.log(property);
+
     if (!property) {
-      res.status(400);
+      res.status(404);
       throw new Error('Property not found');
     }
+
     const parsedEscrowFee = Number(enscrowFee || 0);
+
     if (Number.isNaN(parsedEscrowFee) || parsedEscrowFee < 0) {
       res.status(400);
       throw new Error('Invalid enscrowFee');
     }
 
-    let totalAmount =
-      Number(property.price || 0) + Number(property.agentFee || 0) + parsedEscrowFee;
+    const propertyPrice = Number(property.price || 0);
+    const agentFee = Number(property.agentFee || 0);
+
+    if (Number.isNaN(propertyPrice) || Number.isNaN(agentFee)) {
+      res.status(400);
+      throw new Error('Invalid property pricing data');
+    }
+
+    let totalAmount = propertyPrice + agentFee + parsedEscrowFee;
     let selectedPlan = null;
 
-    // ===============================
-    // 🧠 PLAN ATTACHMENT
-    // ===============================
     if (planId) {
       const plan = await Plan.findById(planId);
-      // console.log(plan);
+
       if (!plan || !plan.isActive) {
         res.status(400);
         throw new Error('Invalid plan');
       }
 
-      totalAmount += plan.amount;
+      totalAmount += Number(plan.amount || 0);
       selectedPlan = plan;
+    }
+
+    if (!totalAmount || Number.isNaN(totalAmount) || totalAmount <= 0) {
+      res.status(400);
+      throw new Error('Invalid total amount');
     }
 
     const reference = crypto.randomBytes(20).toString('hex');
@@ -139,42 +150,59 @@ class PaymentController {
       currency,
       reference,
       enscrowFee: parsedEscrowFee,
-      plan: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
+      status: 'pending',
+      plan: selectedPlan ? selectedPlan._id : null,
     });
 
-    const response = await axios.post(
-      `${PAYSTACK_BASE_URL}/transaction/initialize`,
-      {
-        email: user.email,
-        amount: convertToSmallestUnit(totalAmount, currency),
-        currency,
-        reference,
-        channels: [paymentMethod],
-        metadata: {
-          paymentId: payment._id,
-          type: 'property',
-          // planId: selectedPlan ? selectedPlan._id : null, // 🔥 IMPORTANT
-          // totalAmount,
-          // propertyPrice: property.price,
-          // agentFee: property.agentFee || 0,
-          // enscrowFee: parsedEscrowFee,
-          // ✅ EXTRA METADATA (VERY USEFUL)
-          userName: user.fullName,
-          userPhone: user.phoneNumber,
-        },
-        callback_url: `${process.env.CLIENT_URL}/payment-success`,
+    const payload = {
+      email: user.email,
+      amount: convertToSmallestUnit(totalAmount, currency),
+      currency,
+      reference,
+      metadata: {
+        paymentId: payment._id.toString(),
+        type: 'property',
+        userName: user.fullName,
+        userPhone: user.phoneNumber,
+        propertyId: property._id.toString(),
+        planId: selectedPlan ? selectedPlan._id.toString() : null,
+        enscrowFee: parsedEscrowFee,
+        agentFee: property.agentFee || 0,
+        propertyPrice: property.price,
       },
-      {
+      callback_url: `${process.env.FRONTEND_URl}/payment-tour/success`,
+    };
+
+    if (paymentMethod) {
+      payload.channels = [paymentMethod];
+    }
+
+    try {
+      const response = await axios.post(`${PAYSTACK_BASE_URL}/transaction/initialize`, payload, {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json',
         },
-      },
-    );
-    console.log(response);
-    res.json({
-      message: 'Payment initialized',
-      data: response.data.data,
-    });
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Payment initialized',
+        data: response.data.data,
+      });
+    } catch (error) {
+      console.error('Paystack Property Init Error:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        payload,
+      });
+
+      return res.status(error.response?.status || 500).json({
+        success: false,
+        message: 'Payment initialization failed',
+        error: error.response?.data || error.message,
+      });
+    }
   });
 
   /**
@@ -192,7 +220,7 @@ class PaymentController {
     const event = JSON.parse(req.body.toString());
 
     const data = event.data;
-
+    console.log(data);
     const payment = await Payment.findOne({
       reference: data.reference,
     })
@@ -211,79 +239,83 @@ class PaymentController {
     if (!payment) return res.sendStatus(200);
 
     // 🔥 IDEMPOTENCY CHECK
-    if (payment.status === 'success') {
+    // only skip if payment is already fully processed
+    if (payment.status === 'success' && payment.receiptSent) {
       return res.sendStatus(200);
     }
 
     try {
-      // ===============================
-      // ✅ SUCCESS
-      // ===============================
       if (event.event === 'charge.success') {
         payment.status = 'success';
         payment.transactionId = data.id;
-        payment.paidAt = new Date();
-        payment.receiptSent = true;
+        payment.paidAt = payment.paidAt || new Date();
         payment.paymentMethod = data.channel;
-        await payment.save();
+        payment.metadata = data.metadata;
 
-        // ===============================
-        // 🔥 PLAN ACTIVATION (VERY IMPORTANT)
-        // ===============================
+        // PLAN ACTIVATION
         if (payment.plan) {
           const homeSeeker = await HomeSeeker.findOne({
             user: payment.user._id,
           });
 
-          if (homeSeeker) {
+          if (homeSeeker && !homeSeeker.isPlanActive) {
             homeSeeker.plan = payment.plan;
             homeSeeker.isPlanActive = true;
             homeSeeker.planActivatedAt = new Date();
-
             await homeSeeker.save();
-
-            // 🔥 SEND EMAIL
-            const plan = await Plan.findById(payment.plan);
 
             await SendEmails.sendPlanActivationEmail(
               payment.user.email,
               payment.user.fullName,
-              plan,
+              payment.plan,
             );
           }
         }
 
-        // ===============================
-        // 🏠 PROPERTY PAYMENT
-        // ===============================
+        // PROPERTY PAYMENT
         if (payment.paymentFor === 'property') {
-          const property = Property.findById(payment.property);
+          const propertyId = payment.property?._id || payment.property;
+          const property = await Property.findById(propertyId);
 
           if (property) {
-            property.isSold = true; // optional business logic
+            property.isSold = true;
+            // property.isAvailable = false;
             await property.save();
+
+            payment.property = property;
           }
         }
 
-        // 🎯 BUSINESS LOGIC
+        // TOUR PAYMENT
         if (payment.paymentFor === 'tour') {
-          const tour = await Tour.findById(payment.tour);
+          const tourId = payment.tour?._id || payment.tour;
+          const tour = await Tour.findById(tourId);
 
           if (tour && !tour.paid) {
             tour.paid = true;
             tour.status = 'paid';
             tour.expiresAt = null;
             await tour.save();
+
+            payment.tour = tour;
           }
         }
-        const pdfBuffer = await generateReceiptBuffer(payment);
 
-        await SendEmails.sendPaymentReceiptEmail(
-          payment.user.email,
-          payment.user.fullName,
-          payment,
-          pdfBuffer,
-        );
+        // SEND RECEIPT FOR BOTH PROPERTY AND TOUR
+        if (!payment.receiptSent) {
+          const pdfBuffer = await generateReceiptBuffer(payment);
+          console.log(pdfBuffer);
+          const e = await SendEmails.sendPaymentReceiptEmail(
+            payment.user.email,
+            payment.user.fullName,
+            payment,
+            pdfBuffer,
+          );
+          console.log(e);
+          payment.receiptSent = true;
+        }
+
+        await payment.save();
       }
 
       if (event.event === 'charge.failed') {
@@ -294,8 +326,6 @@ class PaymentController {
       return res.sendStatus(200);
     } catch (err) {
       console.error('Webhook error:', err.message);
-
-      // ❗ IMPORTANT: return 500 so Paystack retries
       return res.sendStatus(500);
     }
   };
