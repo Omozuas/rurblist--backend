@@ -408,7 +408,7 @@ class AuthController {
   ];
 
   static refreshAccessToken = asynchandler(async (req, res) => {
-    const refreshToken = req.cookies.refreshToken;
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
     if (!refreshToken) {
       res.status(400);
       throw new Error('No refresh token provided');
