@@ -6,6 +6,7 @@ const Tour = require('../models/Tour');
 const Plan = require('../models/PlanPricing');
 const HomeSeeker = require('../models/HomeSeeker');
 const Property = require('../models/Property');
+const Verification = require('../models/Verfication');
 const { generateReceipt, generateReceiptBuffer } = require('../helper/generate_receipt');
 // const generateReceiptBuffer = require('../helper/generateReceiptBuffer');
 const SendEmails = require('../helper/email_sender');
@@ -154,6 +155,48 @@ class PaymentController {
       plan: selectedPlan ? selectedPlan._id : null,
     });
 
+    const verification = await Verification.create({
+      user: user._id,
+      agent: property.owner,
+      property: property._id,
+      payment: payment._id,
+
+      status: 'pending',
+
+      currentStage: {
+        title: 'Payment Pending',
+        description: 'Waiting for payment confirmation',
+        estimatedCompletion: null,
+      },
+
+      documents: [
+        {
+          name: 'Certificate of Occupancy',
+          status: 'pending',
+        },
+        {
+          name: 'Survey Plan',
+          status: 'pending',
+        },
+        {
+          name: 'Deed of Assignment',
+          status: 'pending',
+        },
+      ],
+
+      timeline: [
+        {
+          title: 'Payment Initiated',
+          description: 'Property verification payment has been initiated',
+          status: 'info',
+          date: new Date(),
+        },
+      ],
+    });
+
+    payment.verification = verification._id;
+    await payment.save();
+
     const payload = {
       email: user.email,
       amount: convertToSmallestUnit(totalAmount, currency),
@@ -277,6 +320,40 @@ class PaymentController {
           const propertyId = payment.property?._id || payment.property;
           const property = await Property.findById(propertyId);
 
+          const verification = await Verification.findOne({ payment: payment._id });
+
+          if (verification && verification.status === 'pending') {
+            verification.status = 'documents_under_review';
+
+            verification.currentStage = {
+              title: 'Documents under Review',
+              description: 'Our team is verifying property documents',
+              estimatedCompletion: '2-3 business days',
+            };
+
+            verification.timeline.push(
+              {
+                title: 'Payment Received and Confirmed',
+                description: 'Your property verification payment was confirmed',
+                status: 'success',
+                date: new Date(),
+              },
+              {
+                title: 'Verification Process Initiated',
+                description: 'Property verification has started',
+                status: 'success',
+                date: new Date(),
+              },
+              {
+                title: 'Document Review in Progress',
+                description: 'Our team is reviewing the submitted property documents',
+                status: 'info',
+                date: new Date(),
+              },
+            );
+
+            await verification.save();
+          }
           if (property) {
             property.isSold = true;
             // property.isAvailable = false;
