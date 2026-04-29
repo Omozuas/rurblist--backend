@@ -186,7 +186,11 @@ const verificationSchema = new mongoose.Schema(
   },
 );
 
-verificationSchema.pre('save', function (next) {
+verificationSchema.pre('save', async function () {
+  if (!this.certificate) {
+    this.certificate = {};
+  }
+
   if (!this.certificate.certificateId) {
     const year = new Date().getFullYear();
     const random = Math.floor(100000 + Math.random() * 900000);
@@ -198,8 +202,6 @@ verificationSchema.pre('save', function (next) {
     this.isCompleted = true;
     this.completedAt = this.completedAt || new Date();
   }
-
-  next();
 });
 
 const Verification = mongoose.model('Verification', verificationSchema);
