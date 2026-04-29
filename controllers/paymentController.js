@@ -565,7 +565,6 @@ class PaymentController {
         await payment.save();
       }
     } catch (err) {
-      console.error('Webhook processing error:', err);
       res.status(500);
       console.error('Receipt email failed:', err.message);
       throw new Error('Receipt email failed:', err.message);
