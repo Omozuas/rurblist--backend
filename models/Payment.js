@@ -75,7 +75,10 @@ const paymentSchema = new mongoose.Schema(
     transactionId: String,
 
     paidAt: Date,
-
+    webhookProcessed: {
+      type: Boolean,
+      default: false,
+    },
     receiptSent: {
       type: Boolean,
       default: false,
