@@ -251,6 +251,7 @@ class PaymentController {
   /**
    * 🔔 PAYSTACK WEBHOOK (AUTO CONFIRM)
    */
+  /*
   static webhook = async (req, res) => {
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
@@ -406,7 +407,153 @@ class PaymentController {
       return res.sendStatus(500);
     }
   };
+*/
+  static webhook = async (req, res) => {
+    const secret = process.env.PAYSTACK_SECRET_KEY;
 
+    const hash = crypto.createHmac('sha512', secret).update(req.body).digest('hex');
+
+    if (hash !== req.headers['x-paystack-signature']) {
+      return res.status(400).send('Invalid signature');
+    }
+
+    const event = JSON.parse(req.body.toString());
+    const data = event.data;
+
+    const payment = await Payment.findOne({ reference: data.reference });
+
+    if (!payment) return res.sendStatus(200);
+
+    // ✅ respond immediately (CRITICAL)
+    res.sendStatus(200);
+
+    // ✅ process in background
+    PaymentController.processWebhook(event, payment._id);
+  };
+  static async processWebhook(event, paymentId) {
+    try {
+      const data = event.data;
+
+      const payment = await Payment.findById(paymentId)
+        .populate('user', 'fullName email phoneNumber')
+        .populate('property')
+        .populate('plan')
+        .populate('tour');
+
+      if (!payment) return;
+
+      // ✅ idempotency
+      if (payment.webhookProcessed) return;
+
+      if (event.event === 'charge.success') {
+        // ======================
+        // 💾 SAVE EARLY
+        // ======================
+        payment.status = 'success';
+        payment.transactionId = data.id;
+        payment.paidAt = payment.paidAt || new Date();
+        payment.paymentMethod = data.channel;
+
+        await payment.save();
+
+        // ======================
+        // 🏠 PROPERTY
+        // ======================
+        if (payment.paymentFor === 'property') {
+          const property = await Property.findById(payment.property);
+
+          if (property && !property.isSold) {
+            property.isSold = true;
+            await property.save();
+          }
+
+          const verification = await Verification.findOne({ payment: payment._id });
+
+          if (verification && verification.status === 'pending') {
+            verification.status = 'documents_under_review';
+
+            verification.currentStage = {
+              title: 'Documents under Review',
+              description: 'Our team is verifying property documents',
+              estimatedCompletion: '2-3 business days',
+            };
+
+            verification.timeline.push({
+              title: 'Payment Confirmed',
+              description: 'Verification started',
+              status: 'success',
+              date: new Date(),
+            });
+
+            await verification.save();
+          }
+        }
+
+        // ======================
+        // 🎫 TOUR
+        // ======================
+        if (payment.paymentFor === 'tour') {
+          const tour = await Tour.findById(payment.tour);
+
+          if (tour && !tour.paid) {
+            tour.paid = true;
+            tour.status = 'paid';
+            await tour.save();
+          }
+        }
+
+        // ======================
+        // 📦 PLAN
+        // ======================
+        if (payment.plan) {
+          const homeSeeker = await HomeSeeker.findOne({
+            user: payment.user._id,
+          });
+
+          if (homeSeeker && !homeSeeker.isPlanActive) {
+            homeSeeker.plan = payment.plan;
+            homeSeeker.isPlanActive = true;
+            homeSeeker.planActivatedAt = new Date();
+            await homeSeeker.save();
+          }
+        }
+
+        // ======================
+        // 📧 RECEIPT
+        // ======================
+        if (!payment.receiptSent) {
+          try {
+            const pdfBuffer = await generateReceiptBuffer(payment);
+
+            await SendEmails.sendPaymentReceiptEmail(
+              payment.user.email,
+              payment.user.fullName,
+              payment,
+              pdfBuffer,
+            );
+
+            payment.receiptSent = true;
+            await payment.save();
+          } catch (err) {
+            console.error('Receipt error:', err);
+          }
+        }
+
+        // ======================
+        // 🔒 FINAL FLAG
+        // ======================
+        payment.webhookProcessed = true;
+        await payment.save();
+      }
+
+      if (event.event === 'charge.failed') {
+        payment.status = 'failed';
+        await payment.save();
+      }
+    } catch (err) {
+      console.error('Webhook processing error:', err);
+    }
+  }
   /**
    * ✅ VERIFY PAYMENT (FALLBACK)
    */
