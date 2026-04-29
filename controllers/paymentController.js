@@ -428,15 +428,22 @@ class PaymentController {
     res.sendStatus(200);
 
     // ✅ process in background
-    PaymentController.processWebhook(event, payment._id);
+    PaymentController.processWebhook(event, payment._id, res);
   };
-  static async processWebhook(event, paymentId) {
+  static async processWebhook(event, paymentId, res) {
     try {
       const data = event.data;
 
       const payment = await Payment.findById(paymentId)
         .populate('user', 'fullName email phoneNumber')
         .populate('property')
+        .populate({
+          path: 'agent',
+          populate: {
+            path: 'user',
+            select: 'fullName email phoneNumber _id',
+          },
+        })
         .populate('plan')
         .populate('tour');
 
@@ -453,6 +460,7 @@ class PaymentController {
         payment.transactionId = data.id;
         payment.paidAt = payment.paidAt || new Date();
         payment.paymentMethod = data.channel;
+        payment.metadata = data.metadata;
 
         await payment.save();
 
@@ -515,6 +523,12 @@ class PaymentController {
             homeSeeker.isPlanActive = true;
             homeSeeker.planActivatedAt = new Date();
             await homeSeeker.save();
+
+            await SendEmails.sendPlanActivationEmail(
+              payment.user.email,
+              payment.user.fullName,
+              payment.plan,
+            );
           }
         }
 
@@ -551,7 +565,9 @@ class PaymentController {
         await payment.save();
       }
     } catch (err) {
-      console.error('Webhook processing error:', err);
+      res.status(500);
+      console.error('Receipt email failed:', err.message);
+      throw new Error('Receipt email failed:', err.message);
     }
   }
   /**
@@ -565,9 +581,6 @@ class PaymentController {
       throw new Error('Reference required');
     }
 
-    // ===============================
-    // 💳 VERIFY WITH PAYSTACK
-    // ===============================
     const response = await axios.get(`${PAYSTACK_BASE_URL}/transaction/verify/${reference}`, {
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
@@ -575,80 +588,109 @@ class PaymentController {
     });
 
     const data = response.data.data;
-    console.log('Verification data:', response.data);
-    const payment = await Payment.findOne({ reference });
+
+    const payment = await Payment.findOne({ reference })
+      .populate('user', 'fullName email phoneNumber _id')
+      .populate('property')
+      .populate('plan')
+      .populate('tour');
 
     if (!payment) {
       res.status(404);
       throw new Error('Payment not found');
     }
-    if (payment.status === 'success') {
-      res.status(400);
-      throw new Error('Payment already verified');
-    }
-    // ===============================
-    // ❌ FAILED PAYMENT
-    // ===============================
+
     if (data.status !== 'success') {
-      payment.status = 'failed';
-      await payment.save();
+      if (payment.status !== 'success') {
+        payment.status = 'failed';
+        await payment.save();
+      }
+
       res.status(400);
       throw new Error('Payment failed');
     }
 
-    // ===============================
-    // ✅ SUCCESS PAYMENT
-    // ===============================
+    // If webhook already processed it, don't return error
+    if (payment.status === 'success') {
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already verified',
+        data: payment,
+      });
+    }
+
     payment.status = 'success';
     payment.transactionId = data.id;
     payment.paymentMethod = data.channel;
-    payment.paidAt = new Date();
+    payment.paidAt = payment.paidAt || new Date();
+    payment.metadata = data.metadata;
 
     await payment.save();
 
-    // ===============================
-    // 🔥 PLAN ACTIVATION
-    // ===============================
+    // PLAN ACTIVATION
     if (payment.plan) {
       const homeSeeker = await HomeSeeker.findOne({
-        user: payment.user,
+        user: payment.user._id,
       });
 
-      if (!homeSeeker) {
-        res.status(404);
-        throw new Error('HomeSeeker not found');
+      if (homeSeeker && !homeSeeker.isPlanActive) {
+        homeSeeker.plan = payment.plan;
+        homeSeeker.isPlanActive = true;
+        homeSeeker.planActivatedAt = new Date();
+        await homeSeeker.save();
+        await SendEmails.sendPlanActivationEmail(
+          payment.user.email,
+          payment.user.fullName,
+          payment.plan,
+        );
       }
-
-      homeSeeker.plan = payment.plan;
-      homeSeeker.isPlanActive = true;
-      homeSeeker.planActivatedAt = new Date();
-
-      await homeSeeker.save();
     }
 
-    // ===============================
-    // 🏠 PROPERTY PAYMENT
-    // ===============================
+    // PROPERTY PAYMENT
     if (payment.paymentFor === 'property') {
       const property = await Property.findById(payment.property);
 
-      if (property) {
-        // 👉 You can customize this logic
-        property.isSold = true; // optional
-
-        property.isAvailable = false;
-
+      if (property && !property.isSold) {
+        property.isSold = true;
+        // property.isAvailable = false;
         await property.save();
+      }
+
+      const verification = await Verification.findOne({ payment: payment._id });
+
+      if (verification && verification.status === 'pending') {
+        verification.status = 'documents_under_review';
+
+        verification.currentStage = {
+          title: 'Documents under Review',
+          description: 'Our team is verifying property documents',
+          estimatedCompletion: '2-3 business days',
+        };
+
+        verification.timeline.push(
+          {
+            title: 'Payment Received and Confirmed',
+            description: 'Your property verification payment was confirmed',
+            status: 'success',
+            date: new Date(),
+          },
+          {
+            title: 'Verification Process Initiated',
+            description: 'Property verification has started',
+            status: 'success',
+            date: new Date(),
+          },
+        );
+
+        await verification.save();
       }
     }
 
-    // ===============================
-    // 🎫 TOUR PAYMENT (EXISTING)
-    // ===============================
+    // TOUR PAYMENT
     if (payment.paymentFor === 'tour') {
       const tour = await Tour.findById(payment.tour);
 
-      if (tour) {
+      if (tour && !tour.paid) {
         tour.paid = true;
         tour.status = 'paid';
         tour.expiresAt = null;
@@ -656,7 +698,28 @@ class PaymentController {
       }
     }
 
-    res.json({
+    // RECEIPT EMAIL
+    if (!payment.receiptSent) {
+      try {
+        const pdfBuffer = await generateReceiptBuffer(payment);
+
+        await SendEmails.sendPaymentReceiptEmail(
+          payment.user.email,
+          payment.user.fullName,
+          payment,
+          pdfBuffer,
+        );
+
+        payment.receiptSent = true;
+        await payment.save();
+      } catch (err) {
+        res.status(500);
+        console.error('Receipt email failed:', err.message);
+        throw new Error('Receipt email failed:', err.message);
+      }
+    }
+
+    res.status(200).json({
       success: true,
       message: 'Payment verified',
       data: payment,
