@@ -16,12 +16,16 @@ class SendEmails {
   static getTransporter(email, password) {
     return nodemailer.createTransport({
       host: 'smtp.zoho.com',
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false,
+      requireTLS: true,
       auth: {
         user: email,
         pass: password,
       },
+      connectionTimeout: 30000,
+      greetingTimeout: 30000,
+      socketTimeout: 30000,
     });
   }
   static verifyTransporter = SendEmails.getTransporter(
