@@ -29,6 +29,7 @@ class VerificationController {
     const verifications = await Verification.find({ user: req.user._id })
       .populate({
         path: 'agent',
+        select: 'selfieUrl firstName lastName address companyName city nationality',
         populate: {
           path: 'user',
           select: 'fullName email phoneNumber',
@@ -382,19 +383,19 @@ class VerificationController {
 
   static downloadCertificate = asyncHandler(async (req, res) => {
     const { verificationId } = req.params;
-  
+
     const verification = await Verification.findById(verificationId);
-  
+
     if (!verification) {
       res.status(404);
       throw new Error('Verification not found');
     }
-  
+
     if (!verification.certificate || !verification.certificate.url) {
       res.status(404);
       throw new Error('Certificate not uploaded yet');
     }
-  
+
     return res.status(200).json({
       success: true,
       message: 'Certificate download link fetched successfully',
@@ -408,26 +409,26 @@ class VerificationController {
 
   static downloadDocument = asyncHandler(async (req, res) => {
     const { verificationId, documentId } = req.params;
-  
+
     const verification = await Verification.findById(verificationId);
-  
+
     if (!verification) {
       res.status(404);
       throw new Error('Verification not found');
     }
-  
+
     const document = verification.documents.id(documentId);
-  
+
     if (!document) {
       res.status(404);
       throw new Error('Document not found');
     }
-  
+
     if (!document.file || !document.file.url) {
       res.status(404);
       throw new Error('No file uploaded for this document');
     }
-  
+
     return res.status(200).json({
       success: true,
       message: 'Document download link fetched successfully',
