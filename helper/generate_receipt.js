@@ -331,6 +331,7 @@ const generateReceiptBuffer = (payment) => {
   });
 };
 */
+
 const generateReceipt = (payment, res) => {
   const doc = new PDFDocument({ margin: 50 });
 
@@ -349,7 +350,7 @@ const generateReceipt = (payment, res) => {
   // ===============================
   try {
     const logoPath = path.join(__dirname, '../assets/logo.png');
-    doc.image(logoPath, 50, 30, { width: 100 });
+    doc.image(logoPath, 50, 38, { width: 55 });
   } catch (err) {}
 
   // ===============================
@@ -510,9 +511,8 @@ const generateReceiptBuffer = (payment) => {
 
     try {
       const logoPath = path.join(__dirname, '../assets/logo.png');
-      doc.image(logoPath, 50, 30, { width: 100 });
+      doc.image(logoPath, 50, 38, { width: 55 });
     } catch (err) {}
-
     doc
       .fillColor('#fff')
       .fontSize(20)
