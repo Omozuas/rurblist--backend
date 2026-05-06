@@ -23,12 +23,6 @@ Route.get(
 );
 
 // ===============================
-// GET SINGLE VERIFICATION
-// Authenticated users only
-// ===============================
-Route.get('/:id', Checker.authmiddleware, VerificationController.getVerificationById);
-
-// ===============================
 // DOWNLOAD DOCUMENT
 // Authenticated users only
 // ===============================
@@ -128,5 +122,11 @@ Route.post(
   Checker.allowRoles('Admin'),
   VerificationController.addTimeline,
 );
+
+// ===============================
+// GET SINGLE VERIFICATION
+// Authenticated users only
+// ===============================
+Route.get('/:id', Checker.authmiddleware, VerificationController.getVerificationById);
 
 module.exports = Route;

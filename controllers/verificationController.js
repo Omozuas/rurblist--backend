@@ -3,6 +3,14 @@ const fs = require('fs');
 const Verification = require('../models/Verfication');
 const UploadCloud = require('../config/cloudnary');
 
+const cleanupFile = async (filePath) => {
+  if (!filePath) return;
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch {}
+};
+
 class VerificationController {
   static getAllVerifications = asyncHandler(async (req, res) => {
     const verifications = await Verification.find()
@@ -163,7 +171,7 @@ class VerificationController {
     const verification = await Verification.findById(verificationId);
 
     if (!verification) {
-      await fs.promises.unlink(req.file.path);
+      await cleanupFile(req.file.path);
       res.status(404);
       throw new Error('Verification not found');
     }
@@ -171,35 +179,37 @@ class VerificationController {
     const document = verification.documents.id(documentId);
 
     if (!document) {
-      await fs.promises.unlink(req.file.path);
+      await cleanupFile(req.file.path);
       res.status(404);
       throw new Error('Document not found');
     }
 
-    const result = await UploadCloud.upload(req.file.path, 'rublist/verifications/documents');
+    try {
+      const result = await UploadCloud.upload(req.file.path, 'rublist/verifications/documents');
 
-    document.file = {
-      url: result.url,
-      public_id: result.public_id,
-    };
+      document.file = {
+        url: result.url,
+        public_id: result.public_id,
+      };
 
-    document.status = status;
-    document.note = note;
-    document.submittedAt = document.submittedAt || new Date();
+      document.status = status;
+      document.note = note;
+      document.submittedAt = document.submittedAt || new Date();
 
-    if (status === 'verified') document.verifiedAt = new Date();
-    if (status === 'rejected') document.rejectedAt = new Date();
+      if (status === 'verified') document.verifiedAt = new Date();
+      if (status === 'rejected') document.rejectedAt = new Date();
 
-    verification.timeline.push({
-      title: `${document.name} Uploaded`,
-      description: note || `${document.name} has been uploaded`,
-      status: status === 'verified' ? 'success' : status === 'rejected' ? 'failed' : 'info',
-      date: new Date(),
-    });
+      verification.timeline.push({
+        title: `${document.name} Uploaded`,
+        description: note || `${document.name} has been uploaded`,
+        status: status === 'verified' ? 'success' : status === 'rejected' ? 'failed' : 'info',
+        date: new Date(),
+      });
 
-    await verification.save();
-
-    await fs.promises.unlink(req.file.path);
+      await verification.save();
+    } finally {
+      await cleanupFile(req.file.path);
+    }
 
     res.status(200).json({
       success: true,
@@ -219,54 +229,56 @@ class VerificationController {
     const verification = await Verification.findById(verificationId);
 
     if (!verification) {
-      await fs.promises.unlink(req.file.path);
+      await cleanupFile(req.file.path);
       res.status(404);
       throw new Error('Verification not found');
     }
 
-    const result = await UploadCloud.upload(req.file.path, 'rublist/verifications/certificates');
+    try {
+      const result = await UploadCloud.upload(req.file.path, 'rublist/verifications/certificates');
 
-    verification.certificate.url = result.url;
-    verification.certificate.public_id = result.public_id;
-    verification.certificate.issuedAt = new Date();
+      verification.certificate.url = result.url;
+      verification.certificate.public_id = result.public_id;
+      verification.certificate.issuedAt = new Date();
 
-    verification.status = 'completed';
-    verification.isCompleted = true;
-    verification.completedAt = new Date();
+      verification.status = 'completed';
+      verification.isCompleted = true;
+      verification.completedAt = new Date();
 
-    verification.fundsReleased = true;
-    verification.fundsReleasedAt = new Date();
+      verification.fundsReleased = true;
+      verification.fundsReleasedAt = new Date();
 
-    verification.currentStage = {
-      title: 'Verification Completed Successfully',
-      description: 'Funds have been released to seller',
-      estimatedCompletion: null,
-    };
-
-    verification.timeline.push(
-      {
-        title: 'Verification Completed',
-        description: 'Property verification has been completed successfully',
-        status: 'success',
-        date: new Date(),
-      },
-      {
-        title: 'Verification Certificate Uploaded',
-        description: 'Verification certificate has been uploaded successfully',
-        status: 'success',
-        date: new Date(),
-      },
-      {
-        title: 'Funds Released',
+      verification.currentStage = {
+        title: 'Verification Completed Successfully',
         description: 'Funds have been released to seller',
-        status: 'success',
-        date: new Date(),
-      },
-    );
+        estimatedCompletion: null,
+      };
 
-    await verification.save();
+      verification.timeline.push(
+        {
+          title: 'Verification Completed',
+          description: 'Property verification has been completed successfully',
+          status: 'success',
+          date: new Date(),
+        },
+        {
+          title: 'Verification Certificate Uploaded',
+          description: 'Verification certificate has been uploaded successfully',
+          status: 'success',
+          date: new Date(),
+        },
+        {
+          title: 'Funds Released',
+          description: 'Funds have been released to seller',
+          status: 'success',
+          date: new Date(),
+        },
+      );
 
-    await fs.promises.unlink(req.file.path);
+      await verification.save();
+    } finally {
+      await cleanupFile(req.file.path);
+    }
 
     res.status(200).json({
       success: true,

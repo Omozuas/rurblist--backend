@@ -58,6 +58,18 @@ Route.get('/slug/:slug', PropertyController.getPropertyBySlug);
 Route.get('/:propertyId/comments', PropertyController.getCommentsByProperty);
 
 // ===============================
+// LIKE / UNLIKE
+// ===============================
+Route.patch('/:id/like', Checker.authmiddleware, PropertyController.likeProperty);
+Route.patch('/:id/unlike', Checker.authmiddleware, PropertyController.unlikeProperty);
+
+// ===============================
+// COMMENTS (WRITE)
+// ===============================
+Route.post('/:id/comment', Checker.authmiddleware, PropertyController.addComment);
+Route.post('/comment/:commentId/reply', Checker.authmiddleware, PropertyController.addReply);
+
+// ===============================
 // SINGLE PROPERTY (PUBLIC)
 // ===============================
 Route.get('/:id', PropertyController.getSingleProperty);
@@ -82,17 +94,5 @@ Route.delete(
   Checker.allowRoles('Agent', 'Landlord', 'Admin'),
   PropertyController.deleteProperty,
 );
-
-// ===============================
-// LIKE / UNLIKE
-// ===============================
-Route.patch('/:id/like', Checker.authmiddleware, PropertyController.likeProperty);
-Route.patch('/:id/unlike', Checker.authmiddleware, PropertyController.unlikeProperty);
-
-// ===============================
-// COMMENTS (WRITE)
-// ===============================
-Route.post('/:id/comment', Checker.authmiddleware, PropertyController.addComment);
-Route.post('/comment/:commentId/reply', Checker.authmiddleware, PropertyController.addReply);
 
 module.exports = Route;

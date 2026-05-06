@@ -1,15 +1,17 @@
 const express = require('express');
-const bodyPerser = require('body-parser');
-// const session = require('express-session');
 const dotenv = require('dotenv');
 dotenv.config();
 
+const compression = require('compression');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
 const dbConnect = require('./config/dbConnection');
+const validateEnv = require('./config/validateEnv');
 const errorhandler = require('./middlewares/errorhandler');
 const passport = require('passport');
+
+validateEnv();
 
 //router paths
 const Router = require('./routes/index');
@@ -23,33 +25,47 @@ const planRoutes = require('./routes/plan.route');
 const verificationRoute = require('./routes/verification.route');
 // require('./cron/pingServer');
 
-//db connect
-dbConnect();
-require('./config/passport'); // Load Google strategy
-
 const app = express();
 
+const defaultOrigins = [
+  'http://localhost:3000',
+  'http://192.168.1.161:3000',
+  'https://rurblist.netlify.app',
+  'https://rurblist-frontend.vercel.app',
+  'https://rurblist.co',
+];
+const envOrigins = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
+app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.set('query parser', 'extended');
+
 //app use
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://192.168.1.161:3000',
-      'https://rurblist.netlify.app',
-      'https://rurblist-frontend.vercel.app',
-      'https://rurblist.co',
-    ],
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      const corsError = new Error('Not allowed by CORS');
+      corsError.statusCode = 403;
+      return callback(corsError);
+    },
     credentials: true,
   }),
 );
-app.use(morgan('dev'));
-// 🔥🔥🔥 VERY IMPORTANT (WEBHOOK FIRST)
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// VERY IMPORTANT: webhook raw body must be registered before JSON parsers.
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
-app.use(bodyPerser.json());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 app.use(passport.initialize());
 
@@ -69,6 +85,17 @@ app.use(errorhandler.notfound);
 app.use(errorhandler.errorHandler);
 
 //start server
-app.listen(process.env.PORT, () => {
-  console.log(`rublist server is running on ${process.env.PORT}`);
+const startServer = async () => {
+  await dbConnect();
+  require('./config/passport'); // Load Google strategy
+
+  const port = process.env.PORT || 6003;
+  app.listen(port, () => {
+    console.log(`rurblist server is running on ${port}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error('Failed to start server:', error.message);
+  process.exit(1);
 });

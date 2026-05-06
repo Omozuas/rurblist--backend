@@ -1,24 +1,13 @@
-const mongoose=require('mongoose');
-const dotenv = require('dotenv').config()
+const mongoose = require('mongoose');
 
-const uri= process.env.MONG_URL
-
-async function connect(){
+async function connect() {
   try {
-    await mongoose.connect(uri,
-      {
-      // useNewUrlParser:true,
-      // useUnifiedTopology: true,
-     
-    }
-    );
-    console.log('rublist connected to db')
-    
+    await mongoose.connect(process.env.MONG_URL);
+    console.log('rurblist connected to db');
   } catch (error) {
-    console.log(`error db ${uri}`)
-    console.error(error)
+    console.error('Database connection failed:', error.message);
+    throw error;
   }
 }
 
-
-module.exports= connect;
+module.exports = connect;

@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 class StoreImages {
-  static uploadDir = './uploads';
+  static uploadDir = path.join(process.cwd(), 'uploads');
 
   // ✅ Ensure directory exists
   static ensureDir() {

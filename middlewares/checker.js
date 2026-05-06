@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
+const jwtToken = require('../config/jwtToken');
 const asynchandler = require('express-async-handler');
 
 class Checker {
@@ -17,9 +17,9 @@ class Checker {
     token = req.headers.authorization.split(' ')[1];
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwtToken.verifyToken(token);
 
-      const user = await User.findById(decoded.userId).select('-password');
+      const user = await User.findById(decoded.userId);
 
       if (!user) {
         res.status(401);
