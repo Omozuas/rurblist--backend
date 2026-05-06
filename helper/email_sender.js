@@ -1,6 +1,10 @@
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+const sgMail = require('@sendgrid/mail');
 
 class SendEmails {
+  static sendGridConfigured = false;
+
   /* static transporter = nodemailer.createTransport({
     service: 'gmail',
     host: 'smtp.gmail.com',
@@ -14,14 +18,16 @@ class SendEmails {
 */
 
   static getTransporter(email, password) {
+    const port = Number(process.env.SMTP_PORT || 587);
+
     return nodemailer.createTransport({
-      host: 'smtp.zoho.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
+      host: process.env.SMTP_HOST || 'smtp.zoho.com',
+      port,
+      secure: process.env.SMTP_SECURE === 'true' || port === 465,
+      requireTLS: process.env.SMTP_REQUIRE_TLS !== 'false' && port !== 465,
       auth: {
-        user: email,
-        pass: password,
+        user: process.env.SMTP_USER || email,
+        pass: process.env.SMTP_PASSWORD || password,
       },
       connectionTimeout: 30000,
       greetingTimeout: 30000,
@@ -42,6 +48,129 @@ class SendEmails {
     process.env.EMAIL_HELLO,
     process.env.EMAIL_HELLO_PASSWORD,
   );
+
+  static formatEmailAddress = (address) => {
+    const match = address?.match(/^"?([^"<]*)"?\s*<([^>]+)>$/);
+
+    if (!match) {
+      return address;
+    }
+
+    return {
+      name: match[1].trim(),
+      email: match[2].trim(),
+    };
+  };
+
+  static formatBrevoRecipient = (address) => {
+    if (typeof address !== 'string') {
+      return address;
+    }
+
+    const formattedAddress = SendEmails.formatEmailAddress(address);
+
+    if (typeof formattedAddress === 'string') {
+      return { email: formattedAddress };
+    }
+
+    return formattedAddress;
+  };
+
+  static formatBrevoRecipients = (recipients) => {
+    if (Array.isArray(recipients)) {
+      return recipients.map(SendEmails.formatBrevoRecipient);
+    }
+
+    return String(recipients)
+      .split(',')
+      .map((recipient) => recipient.trim())
+      .filter(Boolean)
+      .map(SendEmails.formatBrevoRecipient);
+  };
+
+  static formatApiAttachment = (attachment) => ({
+    name: attachment.filename,
+    content: Buffer.isBuffer(attachment.content)
+      ? attachment.content.toString('base64')
+      : Buffer.from(String(attachment.content)).toString('base64'),
+  });
+
+  static sendMail = async (transporter, mailOptions) => {
+    if (process.env.BREVO_API_KEY) {
+      const sender = SendEmails.formatEmailAddress(mailOptions.from);
+
+      const message = {
+        sender: typeof sender === 'string' ? { email: sender } : sender,
+        to: SendEmails.formatBrevoRecipients(mailOptions.to),
+        subject: mailOptions.subject,
+        textContent: mailOptions.text,
+        htmlContent: mailOptions.html,
+      };
+
+      if (mailOptions.attachments?.length) {
+        message.attachment = mailOptions.attachments.map(SendEmails.formatApiAttachment);
+      }
+
+      const response = await axios.post('https://api.brevo.com/v3/smtp/email', message, {
+        headers: {
+          accept: 'application/json',
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json',
+        },
+        timeout: 30000,
+      });
+
+      console.log('Email sent successfully:', {
+        provider: 'brevo',
+        messageId: response.data?.messageId,
+        subject: mailOptions.subject,
+      });
+
+      return response.data;
+    }
+
+    if (process.env.SENDGRID_API_KEY) {
+      if (!SendEmails.sendGridConfigured) {
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+        SendEmails.sendGridConfigured = true;
+      }
+
+      const message = {
+        from: SendEmails.formatEmailAddress(mailOptions.from),
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        text: mailOptions.text,
+        html: mailOptions.html,
+      };
+
+      if (mailOptions.attachments?.length) {
+        message.attachments = mailOptions.attachments.map((attachment) => ({
+          filename: attachment.filename,
+          content: SendEmails.formatApiAttachment(attachment).content,
+          type: attachment.contentType,
+          disposition: 'attachment',
+        }));
+      }
+
+      const [response] = await sgMail.send(message);
+      console.log('Email sent successfully:', {
+        provider: 'sendgrid',
+        statusCode: response.statusCode,
+        subject: mailOptions.subject,
+      });
+      return response;
+    }
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully:', {
+      provider: 'smtp',
+      messageId: info.messageId,
+      response: info.response,
+      subject: mailOptions.subject,
+    });
+    return info;
+  };
+
   static sendOtpMail = async (email, firstName, otp) => {
     const rurblistEmail = process.env.EMAIL_SUPPORT;
     const currentYear = new Date().getFullYear();
@@ -127,7 +256,7 @@ class SendEmails {
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -226,7 +355,7 @@ class SendEmails {
     };
 
     try {
-      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -339,7 +468,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -443,7 +572,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -561,7 +690,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -615,7 +744,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -672,7 +801,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -736,7 +865,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -789,7 +918,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -865,7 +994,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -946,7 +1075,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -1040,7 +1169,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -1146,7 +1275,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -1227,7 +1356,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -1309,7 +1438,7 @@ Follow us for updates and property tips!
     };
 
     try {
-      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
       console.error('Email send failed:', {
@@ -1324,3 +1453,4 @@ Follow us for updates and property tips!
 }
 
 module.exports = SendEmails;
+

@@ -2,6 +2,8 @@ const express = require('express');
 const bodyPerser = require('body-parser');
 // const session = require('express-session');
 const dotenv = require('dotenv');
+dotenv.config();
+
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const morgan = require('morgan');
@@ -21,15 +23,13 @@ const planRoutes = require('./routes/plan.route');
 const verificationRoute = require('./routes/verification.route');
 // require('./cron/pingServer');
 
-//load env
-dotenv.config();
-
 //db connect
 dbConnect();
 require('./config/passport'); // Load Google strategy
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.set('query parser', 'extended');
 //app use
 app.use(
@@ -39,6 +39,7 @@ app.use(
       'http://192.168.1.161:3000',
       'https://rurblist.netlify.app',
       'https://rurblist-frontend.vercel.app',
+      'https://rurblist.co',
     ],
     credentials: true,
   }),
