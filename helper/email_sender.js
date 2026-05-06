@@ -842,7 +842,7 @@ Follow us for updates and property tips!
 
     const mailOptions = {
       from: `"Rurblist" <${process.env.EMAIL_HELLO}>`,
-      to: process.env.ADMIN_EMAIL,
+      to: process.env.EMAIL_SUPPORT,
       subject: '🚨 New Agent Application Submitted',
       text: `A new agent has applied.`,
       html: `
@@ -1377,6 +1377,3 @@ Follow us for updates and property tips!
 }
 
 module.exports = SendEmails;
-
-
-
