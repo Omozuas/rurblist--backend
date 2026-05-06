@@ -95,6 +95,17 @@ class SendEmails {
       : Buffer.from(String(attachment.content)).toString('base64'),
   });
 
+  static logEmailError = (error) => {
+    console.error('Email send failed:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+  };
+
   static sendMail = async (transporter, mailOptions) => {
     if (process.env.BREVO_API_KEY) {
       const sender = SendEmails.formatEmailAddress(mailOptions.from);
@@ -259,12 +270,7 @@ class SendEmails {
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -358,12 +364,7 @@ class SendEmails {
       const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -471,12 +472,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -575,12 +571,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -693,12 +684,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -747,12 +733,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -804,12 +785,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -868,12 +844,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -921,12 +892,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -997,12 +963,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -1078,12 +1039,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -1172,12 +1128,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.supportTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -1278,12 +1229,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -1359,12 +1305,7 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.verifyTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
@@ -1441,16 +1382,13 @@ Follow us for updates and property tips!
       const info = await SendEmails.sendMail(SendEmails.helloTransporter, mailOptions);
       return info;
     } catch (error) {
-      console.error('Email send failed:', {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-      });
+      SendEmails.logEmailError(error);
       throw error;
     }
   };
 }
 
 module.exports = SendEmails;
+
+
 
