@@ -6,6 +6,12 @@ class PropertySearch {
     this.queryString = queryString;
     this.pipeline = [];
     this.baseFilter = query.getQuery(); // ✅ capture initial filter
+    this.pagination = {
+      limit: Math.min(parseInt(queryString.limit) || 12, 50),
+      sort: queryString.sort || '-createdAt',
+      sortField: (queryString.sort || '-createdAt').split(',')[0].replace('-', ''),
+      hasNextPage: false,
+    };
   }
 
   /**
@@ -155,11 +161,13 @@ class PropertySearch {
    * CURSOR PAGINATION (FAST)
    */
   cursorPaginate() {
-    const limit = Math.min(parseInt(this.queryString.limit) || 12, 50);
-
     const sort = this.queryString.sort || '-createdAt';
-    const sortField = sort.replace('-', '');
+    const sortField = sort.split(',')[0].replace('-', '');
     const isDesc = sort.startsWith('-');
+
+    this.pagination.limit = Math.min(parseInt(this.queryString.limit) || 12, 50);
+    this.pagination.sort = sort;
+    this.pagination.sortField = sortField;
 
     const cursor = this.queryString.cursor;
 
@@ -175,7 +183,7 @@ class PropertySearch {
             },
             {
               [sortField]: parsed.value,
-              _id: { $gt: parsed.id },
+              _id: isDesc ? { $lt: parsed.id } : { $gt: parsed.id },
             },
           ],
         });
@@ -184,7 +192,7 @@ class PropertySearch {
       }
     }
 
-    this.query = this.query.sort(sort).limit(limit);
+    this.query = this.query.sort(sort).limit(this.pagination.limit + 1);
     if (process.env.DEBUG_QUERIES === 'true') console.log(`cursorPaginate:${this.query}`);
     return this;
   }
@@ -227,3 +235,4 @@ class PropertySearch {
 }
 
 module.exports = PropertySearch;
+

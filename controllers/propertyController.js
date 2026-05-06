@@ -73,7 +73,11 @@ class PropertyController {
         },
       ]);
 
-    const properties = await features.query.lean();
+    const fetchedProperties = await features.query.lean();
+    const hasNextPage = fetchedProperties.length > features.pagination.limit;
+    const properties = hasNextPage
+      ? fetchedProperties.slice(0, features.pagination.limit)
+      : fetchedProperties;
 
     // 🔥 COMMENT COUNT (temporary)
     const propertyIds = properties.map((p) => p._id);
@@ -94,12 +98,11 @@ class PropertyController {
     }));
 
     // ✅ cursor fix
-    const sort = req.query.sort || '-createdAt';
-    const sortField = sort.split(',')[0].replace('-', '');
+    const sortField = features.pagination.sortField;
 
     const lastItem = result[result.length - 1];
 
-    const nextCursor = lastItem
+    const nextCursor = hasNextPage && lastItem
       ? {
           value: lastItem[sortField],
           id: lastItem._id,
@@ -110,6 +113,7 @@ class PropertyController {
       success: true,
       count: result.length,
       data: result,
+      hasNextPage,
       nextCursor,
     });
   };
