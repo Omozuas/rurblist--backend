@@ -75,7 +75,7 @@ class PaymentController {
           userName: user.fullName,
           userPhone: user.phoneNumber,
         },
-        callback_url: `${process.env.FRONTEND_URl}/payment-tour/success`,
+        callback_url: `${process.env.FRONTEND_URL}/payment-tour/success`,
       },
       {
         headers: {

@@ -126,8 +126,18 @@ class SendEmails {
 `,
     };
 
-    const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
-    return info;
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendPasswordResetMail = async (email, firstName, resetToken) => {
@@ -215,8 +225,18 @@ class SendEmails {
 `,
     };
 
-    const info = await SendEmails.supportTransporter.sendMail(mailOptions);
-    return info;
+    try {
+      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendWelcomeEmail = async (email, firstName) => {
@@ -318,8 +338,18 @@ Follow us for updates and property tips!
 </html>`,
     };
 
-    const info = await SendEmails.helloTransporter.sendMail(mailOptions);
-    return info;
+    try {
+      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendPasswordChangeAlertEmail = async (email, firstName) => {
@@ -412,8 +442,18 @@ Follow us for updates and property tips!
       </html>`,
     };
 
-    const info = await SendEmails.supportTransporter.sendMail(mailOptions);
-    return info;
+    try {
+      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendAgentApplicationEmail = async (email, firstName) => {
@@ -520,8 +560,18 @@ Follow us for updates and property tips!
   </html>`,
     };
 
-    const info = await SendEmails.helloTransporter.sendMail(mailOptions);
-    return info;
+    try {
+      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendAgentApprovalEmail = async (email, firstName) => {
@@ -564,7 +614,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.verifyTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendAgentRejectionEmail = async (email, firstName) => {
@@ -610,7 +671,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.supportTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendAgentMoreInfoEmail = async (email, firstName) => {
@@ -663,7 +735,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.verifyTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendAdminAgentNotification = async (agentData) => {
@@ -705,7 +788,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.helloTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendTourBookingPaymentEmail = async (email, firstName, tour) => {
@@ -770,7 +864,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.verifyTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendTourRescheduleEmail = async (email, firstName, tour) => {
@@ -840,7 +945,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.helloTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendTourCancelEmail = async (email, firstName, tour) => {
@@ -923,7 +1039,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.supportTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.supportTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendPaymentReceiptEmail = async (email, firstName, payment, pdfBuffer) => {
@@ -1018,7 +1145,18 @@ Follow us for updates and property tips!
       ],
     };
 
-    return await SendEmails.verifyTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendPlanActivationEmail = async (email, firstName, plan) => {
@@ -1088,7 +1226,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.verifyTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.verifyTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 
   static sendTourConfirmedEmail = async (email, firstName, tour) => {
@@ -1159,7 +1308,18 @@ Follow us for updates and property tips!
     `,
     };
 
-    return await SendEmails.helloTransporter.sendMail(mailOptions);
+    try {
+      const info = await SendEmails.helloTransporter.sendMail(mailOptions);
+      return info;
+    } catch (error) {
+      console.error('Email send failed:', {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+      });
+      throw error;
+    }
   };
 }
 
