@@ -5,18 +5,6 @@ const sgMail = require('@sendgrid/mail');
 class SendEmails {
   static sendGridConfigured = false;
 
-  /* static transporter = nodemailer.createTransport({
-    service: 'gmail',
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USERNAME,
-      pass: process.env.EMAIL_PASSWORD,
-    },
-  });
-*/
-
   static getTransporter(email, password) {
     const port = Number(process.env.SMTP_PORT || 587);
 

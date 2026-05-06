@@ -10,6 +10,18 @@ const Comment = require('../models/Comment');
 const validateId = require('../helper/validatemongodb');
 // const DojahService = require('../config/dojahService');
 
+const cleanupUploadedFiles = async (files) => {
+  for (const field of Object.values(files || {})) {
+    for (const file of field) {
+      if (file?.path) {
+        try {
+          await fs.promises.unlink(file.path);
+        } catch {}
+      }
+    }
+  }
+};
+
 class AgentController {
   static createAgent = asynchandler(async (req, res) => {
     console.log('🔥 HIT CONTROLLER');
@@ -174,15 +186,7 @@ class AgentController {
       // ===============================
       // 🧹 CLEAN LOCAL FILES
       // ===============================
-      for (const field of Object.values(req.files)) {
-        for (const file of field) {
-          if (file?.path) {
-            try {
-              await fs.promises.unlink(file.path);
-            } catch {}
-          }
-        }
-      }
+      await cleanupUploadedFiles(req.files);
 
       res.status(201).json({
         success: true,
@@ -202,6 +206,7 @@ class AgentController {
           $pull: { roles: 'Agent' },
         });
       }
+      await cleanupUploadedFiles(req.files);
       res.status(500);
       throw new Error(error.message || 'Something went wrong');
     }
@@ -512,15 +517,7 @@ class AgentController {
       await agent.save();
 
       // 🧹 Clean local files
-      for (const field of Object.values(req.files || {})) {
-        for (const file of field) {
-          if (file?.path) {
-            try {
-              await fs.promises.unlink(file.path);
-            } catch {}
-          }
-        }
-      }
+      await cleanupUploadedFiles(req.files);
 
       res.status(200).json({
         success: true,
@@ -532,6 +529,7 @@ class AgentController {
         uploadedFiles.map((file) => UploadCloud.delete(file.public_id, file.resource_type)),
       );
 
+      await cleanupUploadedFiles(req.files);
       res.status(500);
       throw new Error(error.message || 'Something went wrong');
     }
@@ -626,3 +624,4 @@ class AgentController {
 }
 
 module.exports = AgentController;
+

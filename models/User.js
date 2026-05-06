@@ -47,6 +47,7 @@ var userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
+      select: false,
     },
     roles: {
       type: [String],
@@ -57,11 +58,13 @@ var userSchema = new mongoose.Schema(
     otp: {
       type: String,
       default: null,
+      select: false,
     },
 
     refreshToken: {
       type: String,
       default: null,
+      select: false,
     },
     otpExpires: {
       type: Date,
@@ -83,7 +86,10 @@ var userSchema = new mongoose.Schema(
     },
     passwordChangedDate: Date,
     passwordResetExpires: Date,
-    passwordResetToken: String,
+    passwordResetToken: {
+      type: String,
+      select: false,
+    },
   },
   { timestamps: true },
 );

@@ -12,7 +12,13 @@ const { nanoid } = require('nanoid');
 
 class AuthController {
   static createUser = asynchandler(async (req, res) => {
-    const { email, password, role, fullName, phoneNumber } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+    const { password, role, fullName, phoneNumber } = req.body;
+
+    if (!email || !password || !role || !fullName || !phoneNumber) {
+      res.status(400);
+      throw new Error('All fields are required');
+    }
 
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
 
@@ -108,14 +114,15 @@ class AuthController {
   });
 
   static verifyOtp = asynchandler(async (req, res, next) => {
-    const { email, otp } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+    const { otp } = req.body;
 
     if (!email || !otp) {
       res.status(400);
       throw new Error('Email and OTP are required');
     }
 
-    const user = await User.findOne({ email }).select('-password');
+    const user = await User.findOne({ email }).select('+otp');
 
     if (!user) {
       res.status(404);
@@ -155,13 +162,12 @@ class AuthController {
   });
 
   static resendOtp = asynchandler(async (req, res, next) => {
-    const { email } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
 
     if (!email) {
       res.status(400);
       throw new Error('Email is required');
     }
-    email = email.toLowerCase();
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -193,7 +199,8 @@ class AuthController {
   });
 
   static loginUser = asynchandler(async (req, res) => {
-    const { email, password } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+    const { password } = req.body;
     const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
 
     if (!emailRegex.test(email)) {
@@ -233,6 +240,21 @@ class AuthController {
       isLogin: true,
     });
 
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.cookie('rublist_auth', accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      maxAge: 60 * 60 * 1000,
+    });
+
     return res.status(200).json({
       data: {
         token: accessToken,
@@ -244,7 +266,7 @@ class AuthController {
   });
 
   static forgotPassword = asynchandler(async (req, res) => {
-    const { email } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
 
     const user = await User.findOne({ email });
 
@@ -281,7 +303,8 @@ class AuthController {
   });
 
   static resetPassword = asynchandler(async (req, res) => {
-    const { email, otp, password } = req.body;
+    const email = req.body.email?.toLowerCase().trim();
+    const { otp, password } = req.body;
 
     if (!otp) {
       res.status(400);
@@ -301,7 +324,7 @@ class AuthController {
         email,
         passwordResetToken: ResetToken,
         passwordResetExpires: { $gt: Date.now() },
-      });
+      }).select('+password +passwordResetToken');
 
       if (!user) {
         res.status(400);
@@ -423,7 +446,7 @@ class AuthController {
       throw new Error('Invalid or expired refresh token');
     }
 
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(decoded.userId).select('+refreshToken');
 
     if (!user || user.refreshToken !== refreshToken) {
       res.status(401);
@@ -511,11 +534,19 @@ class AuthController {
 
     await user.save();
 
+    const isProduction = process.env.NODE_ENV === 'production';
+
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    res.cookie('rublist_auth', accessToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      maxAge: 60 * 60 * 1000,
     });
 
     res.status(200).json({

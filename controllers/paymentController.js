@@ -81,6 +81,7 @@ class PaymentController {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         },
+        timeout: 30000,
       },
     );
 
@@ -213,7 +214,7 @@ class PaymentController {
         agentFee: property.agentFee || 0,
         propertyPrice: property.price,
       },
-      callback_url: `${process.env.FRONTEND_URl}/payment-tour/success`,
+      callback_url: `${process.env.FRONTEND_URL}/payment-tour/success`,
     };
 
     if (paymentMethod) {
@@ -226,6 +227,7 @@ class PaymentController {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
           'Content-Type': 'application/json',
         },
+        timeout: 30000,
       });
 
       return res.status(200).json({
@@ -237,7 +239,9 @@ class PaymentController {
       console.error('Paystack Property Init Error:', {
         status: error.response?.status,
         data: error.response?.data,
-        payload,
+        reference,
+        paymentId: payment._id,
+        paymentFor: payment.paymentFor,
       });
 
       return res.status(error.response?.status || 500).json({
@@ -408,6 +412,7 @@ class PaymentController {
     }
   };
 */
+
   static webhook = async (req, res) => {
     const secret = process.env.PAYSTACK_SECRET_KEY;
 
@@ -417,8 +422,19 @@ class PaymentController {
       return res.status(400).send('Invalid signature');
     }
 
-    const event = JSON.parse(req.body.toString());
+    let event;
+
+    try {
+      event = JSON.parse(req.body.toString());
+    } catch (error) {
+      return res.status(400).send('Invalid webhook payload');
+    }
+
     const data = event.data;
+
+    if (!data?.reference) {
+      return res.status(400).send('Missing payment reference');
+    }
 
     const payment = await Payment.findOne({ reference: data.reference });
 
@@ -428,9 +444,32 @@ class PaymentController {
     res.sendStatus(200);
 
     // ✅ process in background
-    PaymentController.processWebhook(event, payment._id, res);
+    PaymentController.processWebhook(event, payment._id).catch((error) => {
+      console.error('Webhook background processing failed:', {
+        message: error.message,
+        reference: data.reference,
+        event: event.event,
+      });
+    });
   };
-  static async processWebhook(event, paymentId, res) {
+
+  static async sendReceiptIfNeeded(payment) {
+    if (payment.receiptSent) return;
+
+    const pdfBuffer = await generateReceiptBuffer(payment);
+
+    await SendEmails.sendPaymentReceiptEmail(
+      payment.user.email,
+      payment.user.fullName,
+      payment,
+      pdfBuffer,
+    );
+
+    payment.receiptSent = true;
+    await payment.save();
+  }
+
+  static async processWebhook(event, paymentId) {
     try {
       const data = event.data;
 
@@ -537,19 +576,13 @@ class PaymentController {
         // ======================
         if (!payment.receiptSent) {
           try {
-            const pdfBuffer = await generateReceiptBuffer(payment);
-
-            await SendEmails.sendPaymentReceiptEmail(
-              payment.user.email,
-              payment.user.fullName,
-              payment,
-              pdfBuffer,
-            );
-
-            payment.receiptSent = true;
-            await payment.save();
+            await PaymentController.sendReceiptIfNeeded(payment);
           } catch (err) {
-            console.error('Receipt error:', err);
+            console.error('Receipt email failed:', {
+              message: err.message,
+              paymentId: payment._id,
+              reference: payment.reference,
+            });
           }
         }
 
@@ -565,9 +598,12 @@ class PaymentController {
         await payment.save();
       }
     } catch (err) {
-      res.status(500);
-      console.error('Receipt email failed:', err.message);
-      throw new Error('Receipt email failed:', err.message);
+      console.error('Webhook processing failed:', {
+        message: err.message,
+        paymentId,
+        event: event.event,
+      });
+      throw err;
     }
   }
   /**
@@ -585,6 +621,7 @@ class PaymentController {
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
       },
+      timeout: 30000,
     });
 
     const data = response.data.data;
@@ -612,6 +649,18 @@ class PaymentController {
 
     // If webhook already processed it, don't return error
     if (payment.status === 'success') {
+      if (!payment.receiptSent) {
+        try {
+          await PaymentController.sendReceiptIfNeeded(payment);
+        } catch (err) {
+          console.error('Receipt email failed:', {
+            message: err.message,
+            paymentId: payment._id,
+            reference: payment.reference,
+          });
+        }
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Payment already verified',
@@ -701,21 +750,13 @@ class PaymentController {
     // RECEIPT EMAIL
     if (!payment.receiptSent) {
       try {
-        const pdfBuffer = await generateReceiptBuffer(payment);
-
-        await SendEmails.sendPaymentReceiptEmail(
-          payment.user.email,
-          payment.user.fullName,
-          payment,
-          pdfBuffer,
-        );
-
-        payment.receiptSent = true;
-        await payment.save();
+        await PaymentController.sendReceiptIfNeeded(payment);
       } catch (err) {
-        res.status(500);
-        console.error('Receipt email failed:', err.message);
-        throw new Error('Receipt email failed:', err.message);
+        console.error('Receipt email failed:', {
+          message: err.message,
+          paymentId: payment._id,
+          reference: payment.reference,
+        });
       }
     }
 

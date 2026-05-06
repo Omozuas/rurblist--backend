@@ -12,6 +12,14 @@ const fs = require('fs');
 const mongoose = require('mongoose');
 const DojahService = require('../config/dojahService');
 
+const cleanupFiles = async (files = []) => {
+  await Promise.all(
+    files.map((file) =>
+      file?.path ? fs.promises.unlink(file.path).catch(() => {}) : Promise.resolve(),
+    ),
+  );
+};
+
 class PropertyController {
   /*
      /api/properties?search=my big house or can search for anything
@@ -109,7 +117,8 @@ class PropertyController {
   static updateProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
     const { removeImages } = req.body;
-    // removeImages = array of public_ids to delete
+    const uploadedImages = [];
+
     validateId.validateMongodbId(id);
     const property = await Property.findById(id);
 
@@ -117,7 +126,7 @@ class PropertyController {
       res.status(404);
       throw new Error('Property not found');
     }
-    // 🔥 Get agent
+
     const agent = await Agent.findOne({ user: req.user._id });
 
     if (!agent) {
@@ -129,77 +138,67 @@ class PropertyController {
       throw new Error('Agent not approved');
     }
 
-    // 🔐 Authorization
     if (property.owner.toString() !== agent._id.toString() && !req.user.roles.includes('Admin')) {
       res.status(403);
       throw new Error('Not authorized');
     }
 
-    /*
-            =====================================
-            🔥 1️⃣ DELETE SELECTED OLD IMAGES
-            =====================================
-        */
-    if (removeImages && Array.isArray(removeImages)) {
-      const existingPublicIds = property.images.map((img) => img.public_id);
+    try {
+      if (removeImages && Array.isArray(removeImages)) {
+        const existingPublicIds = property.images.map((img) => img.public_id);
 
-      for (const publicId of removeImages) {
-        if (existingPublicIds.includes(publicId)) {
-          await UploadCloud.delete(publicId);
-
-          property.images = property.images.filter((img) => img.public_id !== publicId);
+        for (const publicId of removeImages) {
+          if (existingPublicIds.includes(publicId)) {
+            await UploadCloud.delete(publicId);
+            property.images = property.images.filter((img) => img.public_id !== publicId);
+          }
         }
       }
-    }
 
-    /*
-            =====================================
-            🔥 2️⃣ UPLOAD NEW IMAGES (if provided)
-            =====================================
-        */
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        const result = await UploadCloud.upload(file.path, 'rublist/properties');
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
-        property.images.push({
-          url: result.url,
-          public_id: result.public_id,
-        });
+          const image = {
+            url: result.url,
+            public_id: result.public_id,
+          };
 
-        await fs.promises.unlink(file.path);
+          uploadedImages.push(image);
+          property.images.push(image);
+        }
       }
+
+      const allowedFields = [
+        'title',
+        'description',
+        'price',
+        'bedrooms',
+        'bathrooms',
+        'type',
+        'status',
+        'size',
+        'agentFee',
+        'inspectionFee',
+        'paymentFrequency',
+        'furnishingStatus',
+        'amenities',
+        'location',
+      ];
+
+      allowedFields.forEach((field) => {
+        if (req.body[field] !== undefined) {
+          property[field] = req.body[field];
+        }
+      });
+
+      await property.save();
+    } catch (error) {
+      await Promise.all(uploadedImages.map((img) => UploadCloud.delete(img.public_id)));
+      throw error;
+    } finally {
+      await cleanupFiles(req.files);
     }
-
-    /*
-            =====================================
-            🔥 3️⃣ UPDATE OTHER PROPERTY FIELDS
-            =====================================
-        */
-    // 🔒 SAFE UPDATE
-    const allowedFields = [
-      'title',
-      'description',
-      'price',
-      'bedrooms',
-      'bathrooms',
-      'type',
-      'status',
-      'size',
-      'agentFee',
-      'inspectionFee',
-      'paymentFrequency',
-      'furnishingStatus',
-      'amenities',
-      'location',
-    ];
-
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) {
-        property[field] = req.body[field];
-      }
-    });
-
-    await property.save();
 
     res.status(200).json({
       success: true,
@@ -207,7 +206,6 @@ class PropertyController {
       data: property,
     });
   });
-
   static deleteProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
     validateId.validateMongodbId(id);
@@ -1107,9 +1105,6 @@ class PropertyController {
           url: result.url,
           public_id: result.public_id,
         });
-
-        // Remove file from local storage
-        await fs.unlinkSync(file.path);
       }
       // ===============================
       // 🏗 Create Property Document
@@ -1155,6 +1150,8 @@ class PropertyController {
       await Promise.all(uploadedImages.map((img) => UploadCloud.delete(img.public_id)));
       res.status(500);
       throw new Error(error.message || 'Failed to create property');
+    } finally {
+      await cleanupFiles(req.files);
     }
   });
 
@@ -1212,6 +1209,15 @@ class PropertyController {
       res.status(400);
       throw new Error('NIN image is required');
     }
+
+    validateId.validateMongodbId(id);
+    const property = await Property.findById(id);
+
+    if (!property) {
+      res.status(404);
+      throw new Error('Property not found');
+    }
+
     /*
     const verifyResult = await DojahService.verifyNIN(nin);
 
@@ -1225,29 +1231,34 @@ class PropertyController {
       throw new Error('NIN is not valid');
     }
 */
-    const uploaded = await UploadCloud.upload(ninFile.path, `rublist/${roleFolder}/ninSlip`);
-    await fs.promises.unlink(ninFile.path);
+    let uploaded = null;
 
-    profile.nin = nin;
-    profile.ninSlipUrl = {
-      url: uploaded.url,
-      public_id: uploaded.public_id,
-    };
-    profile.kycStatus.ninVerified = true;
-    // profile.verificationData.nin = verifyResult.data;
-    // profile.status = 'approved';
-    profile.status = 'under_review';
+    try {
+      uploaded = await UploadCloud.upload(ninFile.path, `rublist/${roleFolder}/ninSlip`);
 
-    await profile.save();
+      profile.nin = nin;
+      profile.ninSlipUrl = {
+        url: uploaded.url,
+        public_id: uploaded.public_id,
+      };
+      profile.kycStatus.ninVerified = true;
+      // profile.verificationData.nin = verifyResult.data;
+      // profile.status = 'approved';
+      profile.status = 'under_review';
+
+      await profile.save();
+    } catch (error) {
+      if (uploaded?.public_id) {
+        await UploadCloud.delete(uploaded.public_id, uploaded.resource_type);
+      }
+
+      throw error;
+    } finally {
+      await cleanupFiles([ninFile]);
+    }
+
     if (roleFolder === 'homeseeker') homeSeeker = profile;
     if (roleFolder === 'agents') agent = profile;
-
-    validateId.validateMongodbId(id);
-    const property = await Property.findById(id);
-    if (!property) {
-      res.status(404);
-      throw new Error('Property not found');
-    }
 
     return res.status(200).json({
       success: true,
@@ -1261,3 +1272,5 @@ class PropertyController {
 }
 
 module.exports = PropertyController;
+
+

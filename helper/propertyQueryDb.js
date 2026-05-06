@@ -26,7 +26,7 @@ class PropertySearch {
         ],
       });
     }
-    console.log(`search:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`search:${this.query}`);
     return this;
   }
 
@@ -93,7 +93,7 @@ class PropertySearch {
       ...parsedQuery,
     });
 
-    console.log(`filter:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`filter:${this.query}`);
 
     return this;
   }
@@ -115,7 +115,7 @@ class PropertySearch {
         },
       });
     }
-    console.log(`geo:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`geo:${this.query}`);
     return this;
   }
 
@@ -133,7 +133,7 @@ class PropertySearch {
     }
 
     this.query = this.query.sort(sortOption);
-    console.log(`sort:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`sort:${this.query}`);
     return this;
   }
 
@@ -147,7 +147,7 @@ class PropertySearch {
     } else {
       this.query = this.query.select('-__v');
     }
-    console.log(`limited:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`limited:${this.query}`);
     return this;
   }
 
@@ -185,7 +185,7 @@ class PropertySearch {
     }
 
     this.query = this.query.sort(sort).limit(limit);
-    console.log(`cursorPaginate:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`cursorPaginate:${this.query}`);
     return this;
   }
 
@@ -199,7 +199,7 @@ class PropertySearch {
     const skip = (page - 1) * limit;
 
     this.query = this.query.skip(skip).limit(limit);
-    console.log(`psgenated:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`paginated:${this.query}`);
     return this;
   }
 
@@ -221,7 +221,7 @@ class PropertySearch {
         this.query = this.query.populate(field);
       }
     });
-    console.log(`populate:${this.query}`);
+    if (process.env.DEBUG_QUERIES === 'true') console.log(`populate:${this.query}`);
     return this;
   }
 }
