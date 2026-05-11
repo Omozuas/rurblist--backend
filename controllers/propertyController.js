@@ -20,6 +20,58 @@ const cleanupFiles = async (files = []) => {
   );
 };
 
+const normalizeName = (value = '') => value.trim().toLowerCase();
+
+const namesMatch = (inputName, verifiedName) =>
+  normalizeName(inputName) === normalizeName(verifiedName);
+
+const createHttpError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const getBuyerNames = ({ user, profile, roleFolder }) => {
+  if (roleFolder === 'agents') {
+    return {
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+    };
+  }
+
+  const nameParts = user.fullName?.trim().split(/\s+/) || [];
+
+  return {
+    firstName: nameParts[0],
+    lastName: nameParts[nameParts.length - 1],
+  };
+};
+
+const verifyBuyerNIN = async ({ nin, user, profile, roleFolder }) => {
+  const verifyResult = await DojahService.verifyNIN(nin);
+
+  if (!verifyResult.success || !verifyResult.isValid) {
+    throw createHttpError(
+      verifyResult.error || 'NIN verification failed',
+      verifyResult.statusCode || 400,
+    );
+  }
+
+  const ninEntity = verifyResult.data?.entity;
+
+  if (!ninEntity) {
+    throw createHttpError('NIN verification returned no record');
+  }
+
+  // const { firstName, lastName } = getBuyerNames({ user, profile, roleFolder });
+
+  // if (!namesMatch(firstName, ninEntity.first_name) || !namesMatch(lastName, ninEntity.last_name)) {
+  //   throw createHttpError('First name or last name does not match NIN record');
+  // }
+
+  return verifyResult?.data?.entity;
+};
+
 class PropertyController {
   /*
      /api/properties?search=my big house or can search for anything
@@ -102,12 +154,13 @@ class PropertyController {
 
     const lastItem = result[result.length - 1];
 
-    const nextCursor = hasNextPage && lastItem
-      ? {
-          value: lastItem[sortField],
-          id: lastItem._id,
-        }
-      : null;
+    const nextCursor =
+      hasNextPage && lastItem
+        ? {
+            value: lastItem[sortField],
+            id: lastItem._id,
+          }
+        : null;
 
     res.status(200).json({
       success: true,
@@ -120,7 +173,8 @@ class PropertyController {
 
   static updateProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
-    const { removeImages } = req.body;
+    const { removedImagePublicIds } = req.body;
+    const { address, city, state, country, lat, lng } = req.body;
     const uploadedImages = [];
 
     validateId.validateMongodbId(id);
@@ -148,10 +202,10 @@ class PropertyController {
     }
 
     try {
-      if (removeImages && Array.isArray(removeImages)) {
+      if (removedImagePublicIds && Array.isArray(removedImagePublicIds)) {
         const existingPublicIds = property.images.map((img) => img.public_id);
 
-        for (const publicId of removeImages) {
+        for (const publicId of removedImagePublicIds) {
           if (existingPublicIds.includes(publicId)) {
             await UploadCloud.delete(publicId);
             property.images = property.images.filter((img) => img.public_id !== publicId);
@@ -187,7 +241,6 @@ class PropertyController {
         'paymentFrequency',
         'furnishingStatus',
         'amenities',
-        'location',
       ];
 
       allowedFields.forEach((field) => {
@@ -195,6 +248,43 @@ class PropertyController {
           property[field] = req.body[field];
         }
       });
+
+      const hasLocationUpdate =
+        address !== undefined ||
+        city !== undefined ||
+        state !== undefined ||
+        country !== undefined ||
+        lat !== undefined ||
+        lng !== undefined;
+
+      if (hasLocationUpdate) {
+        const currentLocation = property.location?.toObject?.() || property.location || {};
+
+        property.location = {
+          ...currentLocation,
+          address: address ?? currentLocation.address,
+          city: city ?? currentLocation.city,
+          state: state ?? currentLocation.state,
+          country: country ?? currentLocation.country,
+        };
+
+        if (lat !== undefined || lng !== undefined) {
+          const parsedLat = Number(lat ?? currentLocation.coordinates?.coordinates?.[1]);
+          const parsedLng = Number(lng ?? currentLocation.coordinates?.coordinates?.[0]);
+
+          if (isNaN(parsedLat) || isNaN(parsedLng)) {
+            res.status(400);
+            throw new Error('Invalid coordinates');
+          }
+
+          property.location.coordinates = {
+            type: 'Point',
+            coordinates: [parsedLng, parsedLat],
+          };
+        } else if (currentLocation.coordinates?.coordinates) {
+          property.location.coordinates = currentLocation.coordinates;
+        }
+      }
 
       await property.save();
     } catch (error) {
@@ -1222,33 +1312,29 @@ class PropertyController {
       throw new Error('Property not found');
     }
 
-    /*
-    const verifyResult = await DojahService.verifyNIN(nin);
-
-    if (!verifyResult.success) {
-      res.status(400);
-      throw new Error('NIN verification failed');
-    }
-
-    if (!verifyResult.isValid) {
-      res.status(400);
-      throw new Error('NIN is not valid');
-    }
-*/
     let uploaded = null;
 
     try {
+      const ninVerificationData = await verifyBuyerNIN({
+        nin,
+        user,
+        profile,
+        roleFolder,
+      });
+
       uploaded = await UploadCloud.upload(ninFile.path, `rublist/${roleFolder}/ninSlip`);
 
       profile.nin = nin;
       profile.ninSlipUrl = {
         url: uploaded.url,
+        download_url: UploadCloud.getDownloadUrl(uploaded.public_id, uploaded.resource_type),
         public_id: uploaded.public_id,
+        resource_type: uploaded.resource_type,
       };
       profile.kycStatus.ninVerified = true;
-      // profile.verificationData.nin = verifyResult.data;
-      // profile.status = 'approved';
-      profile.status = 'under_review';
+      profile.verificationData.nin = ninVerificationData;
+      profile.status = 'approved';
+      // profile.status = 'under_review';
 
       await profile.save();
     } catch (error) {
@@ -1256,7 +1342,8 @@ class PropertyController {
         await UploadCloud.delete(uploaded.public_id, uploaded.resource_type);
       }
 
-      throw error;
+      res.status(error.statusCode || 500);
+      throw new Error(error.message || 'Failed to verify buyer');
     } finally {
       await cleanupFiles([ninFile]);
     }
@@ -1276,5 +1363,3 @@ class PropertyController {
 }
 
 module.exports = PropertyController;
-
-

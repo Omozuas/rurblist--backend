@@ -8,7 +8,7 @@ const User = require('../models/User');
 const Property = require('../models/Property');
 const Comment = require('../models/Comment');
 const validateId = require('../helper/validatemongodb');
-// const DojahService = require('../config/dojahService');
+const DojahService = require('../config/dojahService');
 
 const cleanupUploadedFiles = async (files) => {
   for (const field of Object.values(files || {})) {
@@ -20,6 +20,105 @@ const cleanupUploadedFiles = async (files) => {
       }
     }
   }
+};
+
+const deleteCloudinaryAsset = async (publicId, resourceType) => {
+  if (!publicId) return;
+
+  const resourceTypes = resourceType ? [resourceType] : ['image', 'raw'];
+
+  let lastError;
+
+  for (const type of resourceTypes) {
+    try {
+      const result = await UploadCloud.delete(publicId, type);
+      if (result?.result === 'ok' || result?.result === 'not found') return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError) throw lastError;
+};
+
+const buildCloudinaryFile = (result) => ({
+  url: result.url,
+  download_url: UploadCloud.getDownloadUrl(result.public_id, result.resource_type),
+  public_id: result.public_id,
+  resource_type: result.resource_type,
+});
+
+const normalizeName = (value = '') => value.trim().toLowerCase();
+
+const createHttpError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const namesMatch = (inputName, verifiedName) =>
+  normalizeName(inputName) === normalizeName(verifiedName);
+
+const verifyAgentIdentity = async ({ nin, cacNumber, firstName, lastName, companyName }) => {
+  const kycStatus = {};
+  const verificationData = {};
+
+  if (nin) {
+    const ninResult = await DojahService.verifyNIN(nin);
+
+    if (!ninResult.success || !ninResult.isValid) {
+      throw createHttpError(
+        ninResult.error || 'NIN verification failed',
+        ninResult.statusCode || 400,
+      );
+    }
+
+    const ninEntity = ninResult.data?.entity;
+
+    if (!ninEntity) {
+      throw createHttpError('NIN verification returned no record');
+    }
+
+    if (
+      !namesMatch(firstName, ninEntity.first_name) ||
+      !namesMatch(lastName, ninEntity.last_name)
+    ) {
+      throw createHttpError('First name or last name does not match NIN record');
+    }
+
+    kycStatus.ninVerified = true;
+    verificationData.nin = ninResult.data?.entity;
+  }
+
+  if (cacNumber) {
+    if (!companyName) {
+      throw createHttpError('Company name is required for CAC verification');
+    }
+
+    const cacResult = await DojahService.verifyCAC(cacNumber);
+
+    if (!cacResult.success || !cacResult.isValid) {
+      throw createHttpError(
+        cacResult.error || 'CAC verification failed',
+        cacResult.statusCode || 400,
+      );
+    }
+
+    const cacEntity = cacResult.data?.entity;
+
+    if (!cacEntity) {
+      throw createHttpError('CAC verification returned no record');
+    }
+
+    if (!namesMatch(companyName, cacEntity.company_name)) {
+      throw createHttpError('Company name does not match CAC record');
+    }
+
+    kycStatus.cacVerified = true;
+    verificationData.cac = cacResult.data?.entity;
+  }
+
+  return { kycStatus, verificationData };
 };
 
 class AgentController {
@@ -98,6 +197,14 @@ class AgentController {
     let agent;
 
     try {
+      const verifiedIdentity = await verifyAgentIdentity({
+        nin,
+        cacNumber,
+        firstName,
+        lastName,
+        companyName,
+      });
+
       // ===============================
       // 📂 UPLOAD FILES
       // ===============================
@@ -118,24 +225,15 @@ class AgentController {
         });
 
         if (field === 'selfie') {
-          fileUrls.selfieUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.selfieUrl = buildCloudinaryFile(result);
         }
 
         if (field === 'ninSlip') {
-          fileUrls.ninSlipUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.ninSlipUrl = buildCloudinaryFile(result);
         }
 
         if (field === 'cacDoc') {
-          fileUrls.cacDocumentUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.cacDocumentUrl = buildCloudinaryFile(result);
         }
       }
 
@@ -156,17 +254,27 @@ class AgentController {
         description,
         isAgreement: parsedAgreement,
         user: user._id,
-        status: 'under_review', // 🔥 Move to review
+        status: 'approved', // 🔥 Move to review
+        kycStatus: {
+          ninVerified: verifiedIdentity.kycStatus.ninVerified || false,
+          cacVerified: verifiedIdentity.kycStatus.cacVerified || false,
+        },
+        verificationData: {
+          nin: verifiedIdentity.verificationData.nin || null,
+          cac: verifiedIdentity.verificationData.cac || null,
+        },
         ...fileUrls,
       });
-      await agent.populate('user', 'email firstName lastName isAgent _id phoneNumber');
       // ===============================
       // 👤 UPDATE USER
       // ===============================
       await User.findByIdAndUpdate(user._id, {
         $addToSet: { roles: 'Agent' },
       });
-
+      await User.findByIdAndUpdate(user._id, {
+        $pull: { roles: 'Home_Seeker' },
+      });
+      await agent.populate('user', 'email fullName roles _id phoneNumber profileImage');
       // ===============================
       // 📧 EMAILS (non-critical)
       // ===============================
@@ -175,6 +283,7 @@ class AgentController {
 
         if (fullUser?.email) {
           await SendEmails.sendAgentApplicationEmail(fullUser.email, firstName);
+          await SendEmails.sendAgentApprovalEmail(fullUser.email, agent.firstName);
         }
 
         await SendEmails.sendAdminAgentNotification(agent);
@@ -187,7 +296,6 @@ class AgentController {
       // 🧹 CLEAN LOCAL FILES
       // ===============================
       await cleanupUploadedFiles(req.files);
-
       res.status(201).json({
         success: true,
         message: 'Agent application submitted successfully',
@@ -207,7 +315,7 @@ class AgentController {
         });
       }
       await cleanupUploadedFiles(req.files);
-      res.status(500);
+      res.status(error.statusCode || 500);
       throw new Error(error.message || 'Something went wrong');
     }
   });
@@ -233,6 +341,7 @@ class AgentController {
 
   static updateAgent = asynchandler(async (req, res) => {
     const user = req.user;
+    const { selfiePublicId, cacDocPublicId } = req.body;
 
     const agent = await Agent.findOne({ user: user._id });
 
@@ -242,7 +351,7 @@ class AgentController {
     }
 
     // 🚫 BLOCK restricted fields
-    const restrictedFields = ['nin', 'cacNumber'];
+    const restrictedFields = ['nin', 'firstName', 'lastName', 'dateOfBirth'];
 
     for (const field of restrictedFields) {
       if (req.body[field]) {
@@ -253,30 +362,100 @@ class AgentController {
 
     // ✅ Allowed updates
     const updatableFields = [
-      'firstName',
-      'lastName',
-      'dateOfBirth',
       'city',
       'address',
       'nationality',
+      'cacNumber',
       'companyName',
       'yearsOfExperience',
       'description',
     ];
 
-    for (const field of updatableFields) {
-      if (req.body[field] !== undefined) {
-        agent[field] = req.body[field];
+    const uploadedFiles = [];
+    const oldFilesToDelete = [];
+
+    try {
+      for (const field of updatableFields) {
+        if (req.body[field] !== undefined) {
+          agent[field] = req.body[field];
+        }
       }
+
+      if (req.body.cacNumber) {
+        const verifiedIdentity = await verifyAgentIdentity({
+          cacNumber: req.body.cacNumber,
+          companyName: agent.companyName,
+        });
+
+        agent.kycStatus.cacVerified = verifiedIdentity.kycStatus.cacVerified || false;
+        agent.verificationData.cac = verifiedIdentity.verificationData.cac || null;
+      }
+
+      if (req.files?.selfie?.[0]) {
+        const result = await UploadCloud.upload(req.files.selfie[0].path, 'rublist/agents/selfie');
+
+        uploadedFiles.push({
+          public_id: result.public_id,
+          resource_type: result.resource_type,
+        });
+
+        oldFilesToDelete.push({
+          public_id: selfiePublicId || agent.selfieUrl?.public_id,
+          resource_type: agent.selfieUrl?.resource_type,
+        });
+
+        agent.selfieUrl = {
+          ...buildCloudinaryFile(result),
+        };
+      }
+
+      if (req.files?.cacDoc?.[0]) {
+        const result = await UploadCloud.upload(req.files.cacDoc[0].path, 'rublist/agents/cacDoc');
+
+        uploadedFiles.push({
+          public_id: result.public_id,
+          resource_type: result.resource_type,
+        });
+
+        oldFilesToDelete.push({
+          public_id: cacDocPublicId || agent.cacDocumentUrl?.public_id,
+          resource_type: agent.cacDocumentUrl?.resource_type,
+        });
+
+        agent.cacDocumentUrl = {
+          ...buildCloudinaryFile(result),
+        };
+      }
+
+      await agent.save();
+
+      const deleteResults = await Promise.allSettled(
+        oldFilesToDelete.map((file) => deleteCloudinaryAsset(file.public_id, file.resource_type)),
+      );
+
+      deleteResults.forEach((result) => {
+        if (result.status === 'rejected') {
+          console.log('Old Cloudinary file delete failed:', result.reason.message);
+        }
+      });
+
+      await cleanupUploadedFiles(req.files);
+
+      res.status(200).json({
+        success: true,
+        message: 'Agent updated successfully',
+        data: agent,
+      });
+    } catch (error) {
+      await Promise.all(
+        uploadedFiles.map((file) => UploadCloud.delete(file.public_id, file.resource_type)),
+      );
+
+      await cleanupUploadedFiles(req.files);
+
+      res.status(error.statusCode || 500);
+      throw new Error(error.message || 'Failed to update agent');
     }
-
-    await agent.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Agent updated successfully',
-      data: agent,
-    });
   });
 
   static deleteAgent = asynchandler(async (req, res) => {
@@ -451,6 +630,14 @@ class AgentController {
     };
 
     try {
+      const verifiedIdentity = await verifyAgentIdentity({
+        nin,
+        cacNumber,
+        firstName: firstName || agent.firstName,
+        lastName: lastName || agent.lastName,
+        companyName: companyName || agent.companyName,
+      });
+
       const fileFields = ['selfie', 'ninSlip', 'cacDoc'];
 
       // 📂 Upload files
@@ -469,24 +656,15 @@ class AgentController {
         });
 
         if (field === 'selfie') {
-          fileUrls.selfieUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.selfieUrl = buildCloudinaryFile(result);
         }
 
         if (field === 'ninSlip') {
-          fileUrls.ninSlipUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.ninSlipUrl = buildCloudinaryFile(result);
         }
 
         if (field === 'cacDoc') {
-          fileUrls.cacDocumentUrl = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+          fileUrls.cacDocumentUrl = buildCloudinaryFile(result);
         }
       }
 
@@ -504,6 +682,22 @@ class AgentController {
       if (lastName) agent.lastName = lastName;
       if (city) agent.city = city;
 
+      if (verifiedIdentity.kycStatus.ninVerified !== undefined) {
+        agent.kycStatus.ninVerified = verifiedIdentity.kycStatus.ninVerified;
+      }
+
+      if (verifiedIdentity.kycStatus.cacVerified !== undefined) {
+        agent.kycStatus.cacVerified = verifiedIdentity.kycStatus.cacVerified;
+      }
+
+      if (verifiedIdentity.verificationData.nin) {
+        agent.verificationData.nin = verifiedIdentity.verificationData.nin;
+      }
+
+      if (verifiedIdentity.verificationData.cac) {
+        agent.verificationData.cac = verifiedIdentity.verificationData.cac;
+      }
+
       if (fileUrls.selfieUrl) agent.selfieUrl = fileUrls.selfieUrl;
       if (fileUrls.ninSlipUrl) agent.ninSlipUrl = fileUrls.ninSlipUrl;
       if (fileUrls.cacDocumentUrl) agent.cacDocumentUrl = fileUrls.cacDocumentUrl;
@@ -512,10 +706,13 @@ class AgentController {
       agent.isAgreement = parsedAgreement;
 
       // 🔥 Move to review
-      agent.status = 'under_review';
+      agent.status = 'approved';
 
       await agent.save();
+      await agent.populate('user', 'email fullName roles _id phoneNumber profileImage');
 
+      await SendEmails.sendAgentApprovalEmail(agent.user.email, agent.firstName);
+      await SendEmails.sendAdminAgentNotification(agent);
       // 🧹 Clean local files
       await cleanupUploadedFiles(req.files);
 
@@ -530,7 +727,7 @@ class AgentController {
       );
 
       await cleanupUploadedFiles(req.files);
-      res.status(500);
+      res.status(error.statusCode || 500);
       throw new Error(error.message || 'Something went wrong');
     }
   });
@@ -624,4 +821,3 @@ class AgentController {
 }
 
 module.exports = AgentController;
-

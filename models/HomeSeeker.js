@@ -51,12 +51,16 @@ const homeSeekerSchema = new mongoose.Schema(
 
     ninSlipUrl: {
       url: { type: String, default: null },
+      download_url: { type: String, default: null },
       public_id: { type: String, default: null },
+      resource_type: { type: String, default: null },
     },
 
     selfieUrl: {
       url: { type: String, default: null },
+      download_url: { type: String, default: null },
       public_id: { type: String, default: null },
+      resource_type: { type: String, default: null },
     },
 
     address: {
