@@ -48,10 +48,11 @@ class UploadCloud {
       throw new Error(`Cloudinary Delete Error: ${error.message || JSON.stringify(error)}`);
     }
   }
-  static getDownloadUrl(publicId) {
+  static getDownloadUrl(publicId, resourceType = 'raw') {
     return cloudinary.url(publicId, {
-      resource_type: 'raw',
+      resource_type: resourceType,
       flags: 'attachment',
+      secure: true,
     });
   }
 }

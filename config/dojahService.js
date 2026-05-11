@@ -27,14 +27,23 @@ class DojahService {
     return error.response?.data?.message || error.response?.data?.error || error.message;
   }
 
+  static buildErrorResponse(error) {
+    return {
+      statusCode: error.response?.status || error.statusCode || 500,
+      error: DojahService.getErrorMessage(error),
+    };
+  }
+
   /**
    * VERIFY NIN
    * @param {string} nin
    */
-  static async verifyNIN(nin) {
+  static async verifyNIN(nin, callbackErr) {
     try {
       if (!nin) {
-        throw new Error('NIN is required');
+        const error = new Error('NIN is required');
+        error.statusCode = 400;
+        throw error;
       }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/nin`, {
@@ -51,17 +60,23 @@ class DojahService {
         data,
       };
     } catch (error) {
-      const errorMessage = DojahService.getErrorMessage(error);
+      const errorResponse = DojahService.buildErrorResponse(error);
+
+      if (typeof callbackErr === 'function') {
+        callbackErr(errorResponse);
+      }
+
       console.error('NIN Verification Error:', {
-        status: error.response?.status,
-        message: errorMessage,
+        status: errorResponse.statusCode,
+        message: errorResponse.error,
       });
 
       return {
         success: false,
         isValid: false,
-        status: error.response?.status || 500,
-        error: errorMessage,
+        status: errorResponse.statusCode,
+        statusCode: errorResponse.statusCode,
+        error: errorResponse.error,
       };
     }
   }
@@ -70,10 +85,12 @@ class DojahService {
    * VERIFY CAC
    * @param {string} cacNumber
    */
-  static async verifyCAC(cacNumber) {
+  static async verifyCAC(cacNumber, callbackErr) {
     try {
       if (!cacNumber) {
-        throw new Error('CAC number is required');
+        const error = new Error('CAC number is required');
+        error.statusCode = 400;
+        throw error;
       }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/cac`, {
@@ -90,17 +107,23 @@ class DojahService {
         data,
       };
     } catch (error) {
-      const errorMessage = DojahService.getErrorMessage(error);
+      const errorResponse = DojahService.buildErrorResponse(error);
+
+      if (typeof callbackErr === 'function') {
+        callbackErr(errorResponse);
+      }
+
       console.error('CAC Verification Error:', {
-        status: error.response?.status,
-        message: errorMessage,
+        status: errorResponse.statusCode,
+        message: errorResponse.error,
       });
 
       return {
         success: false,
         isValid: false,
-        status: error.response?.status || 500,
-        error: errorMessage,
+        status: errorResponse.statusCode,
+        statusCode: errorResponse.statusCode,
+        error: errorResponse.error,
       };
     }
   }
@@ -185,4 +208,3 @@ class DojahService {
 }
 
 module.exports = DojahService;
-

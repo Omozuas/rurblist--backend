@@ -38,7 +38,6 @@ Route.patch(
   Checker.authmiddleware,
   Upload.fields([
     { name: 'selfie', maxCount: 1 },
-    { name: 'ninSlip', maxCount: 1 },
     { name: 'cacDoc', maxCount: 1 },
   ]),
   AgentController.updateAgent,
