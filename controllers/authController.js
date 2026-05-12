@@ -415,7 +415,7 @@ class AuthController {
 
         const otp = generateOtp();
         const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(otp).digest('hex');
-        await User.findByIdAndUpdate(user.id, {
+        await User.findByIdAndUpdate(user._id, {
           otp: hashedOtp,
           otpExpires: Date.now() + 3 * 60 * 1000, // 3 minutes,
         });

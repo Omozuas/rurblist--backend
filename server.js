@@ -5,7 +5,9 @@ dotenv.config();
 const compression = require('compression');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const dbConnect = require('./config/dbConnection');
 const validateEnv = require('./config/validateEnv');
 const errorhandler = require('./middlewares/errorhandler');
@@ -23,7 +25,7 @@ const paymentRoutes = require('./routes/payment.route');
 const tourRoutes = require('./routes/tour.route');
 const planRoutes = require('./routes/plan.route');
 const verificationRoute = require('./routes/verification.route');
-// require('./cron/pingServer');
+require('./cron/pingServer');
 
 const app = express();
 
@@ -45,6 +47,15 @@ app.set('trust proxy', 1);
 app.set('query parser', 'extended');
 
 //app use
+app.use(helmet());
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: process.env.NODE_ENV === 'production' ? 300 : 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 app.use(
   cors({
     origin(origin, callback) {

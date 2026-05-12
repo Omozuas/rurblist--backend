@@ -3,6 +3,68 @@ const fs = require('fs');
 const Verification = require('../models/Verfication');
 const UploadCloud = require('../config/cloudnary');
 
+const parseCursor = (cursor) => {
+  if (!cursor) return null;
+
+  try {
+    return JSON.parse(cursor);
+  } catch {
+    const error = new Error('Invalid cursor format');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
+const buildCursorFilter = (cursor) => {
+  const parsedCursor = parseCursor(cursor);
+
+  if (!parsedCursor) return {};
+
+  return {
+    $or: [
+      { createdAt: { $lt: new Date(parsedCursor.value) } },
+      {
+        createdAt: new Date(parsedCursor.value),
+        _id: { $lt: parsedCursor.id },
+      },
+    ],
+  };
+};
+
+const buildCursorResponse = (items, limit) => {
+  const hasNextPage = items.length > limit;
+  const data = hasNextPage ? items.slice(0, limit) : items;
+  const lastItem = data[data.length - 1];
+
+  return {
+    data,
+    hasNextPage,
+    nextCursor:
+      hasNextPage && lastItem
+        ? {
+            value: lastItem.createdAt,
+            id: lastItem._id,
+          }
+        : null,
+  };
+};
+
+const getIdString = (value) => {
+  if (!value) return null;
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
+const canAccessVerification = (verification, user) => {
+  if (user.roles?.includes('Admin')) return true;
+
+  const userId = user._id.toString();
+  const verificationUserId = getIdString(verification.user);
+  const agentUserId = getIdString(verification.agent?.user);
+
+  return verificationUserId === userId || agentUserId === userId;
+};
+
 const cleanupFile = async (filePath) => {
   if (!filePath) return;
 
@@ -13,44 +75,66 @@ const cleanupFile = async (filePath) => {
 
 class VerificationController {
   static getAllVerifications = asyncHandler(async (req, res) => {
-    const verifications = await Verification.find()
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const filter = buildCursorFilter(req.query.cursor);
+
+    const verifications = await Verification.find(filter)
       .populate('user', 'fullName email phoneNumber')
       .populate({
         path: 'agent',
+        select: 'firstName lastName companyName user',
         populate: {
           path: 'user',
           select: 'fullName email phoneNumber',
         },
       })
-      .populate('property')
-      .populate('payment')
-      .sort({ createdAt: -1 });
+      .populate('property', 'title price status location images slug')
+      .populate('payment', 'amount currency status reference paidAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(verifications, limit);
 
     res.status(200).json({
       success: true,
-      count: verifications.length,
-      data: verifications,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
   static getMyVerifications = asyncHandler(async (req, res) => {
-    const verifications = await Verification.find({ user: req.user._id })
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const filter = {
+      user: req.user._id,
+      ...buildCursorFilter(req.query.cursor),
+    };
+
+    const verifications = await Verification.find(filter)
       .populate({
         path: 'agent',
-        select: 'selfieUrl firstName lastName address companyName city nationality',
+        select: 'selfieUrl firstName lastName address companyName city nationality user',
         populate: {
           path: 'user',
           select: 'fullName email phoneNumber',
         },
       })
-      .populate('property')
-      .populate('payment')
-      .sort({ createdAt: -1 });
+      .populate('property', 'title price status location images slug')
+      .populate('payment', 'amount currency status reference paidAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(verifications, limit);
 
     res.status(200).json({
       success: true,
-      count: verifications.length,
-      data: verifications,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -59,17 +143,23 @@ class VerificationController {
       .populate('user', 'fullName email phoneNumber')
       .populate({
         path: 'agent',
+        select: 'firstName lastName companyName user',
         populate: {
           path: 'user',
           select: 'fullName email phoneNumber',
         },
       })
-      .populate('property')
-      .populate('payment');
+      .populate('property', 'title price status location images slug')
+      .populate('payment', 'amount currency status reference paidAt');
 
     if (!verification) {
       res.status(404);
       throw new Error('Verification not found');
+    }
+
+    if (!canAccessVerification(verification, req.user)) {
+      res.status(403);
+      throw new Error('Not authorized to view this verification');
     }
 
     res.status(200).json({
@@ -396,11 +486,19 @@ class VerificationController {
   static downloadCertificate = asyncHandler(async (req, res) => {
     const { verificationId } = req.params;
 
-    const verification = await Verification.findById(verificationId);
+    const verification = await Verification.findById(verificationId).populate({
+      path: 'agent',
+      select: 'user',
+    });
 
     if (!verification) {
       res.status(404);
       throw new Error('Verification not found');
+    }
+
+    if (!canAccessVerification(verification, req.user)) {
+      res.status(403);
+      throw new Error('Not authorized to access this verification');
     }
 
     if (!verification.certificate || !verification.certificate.url) {
@@ -422,11 +520,19 @@ class VerificationController {
   static downloadDocument = asyncHandler(async (req, res) => {
     const { verificationId, documentId } = req.params;
 
-    const verification = await Verification.findById(verificationId);
+    const verification = await Verification.findById(verificationId).populate({
+      path: 'agent',
+      select: 'user',
+    });
 
     if (!verification) {
       res.status(404);
       throw new Error('Verification not found');
+    }
+
+    if (!canAccessVerification(verification, req.user)) {
+      res.status(403);
+      throw new Error('Not authorized to access this verification');
     }
 
     const document = verification.documents.id(documentId);

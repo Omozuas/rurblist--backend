@@ -7,19 +7,21 @@ class Checker {
   // 🔐 AUTH MIDDLEWARE
   // ===============================
   static authmiddleware = asynchandler(async (req, res, next) => {
-    let token;
+    const authHeader = req.headers.authorization;
 
-    if (!req.headers.authorization || !req.headers.authorization.startsWith('Bearer')) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401);
       throw new Error('Not authorized. No token provided');
     }
 
-    token = req.headers.authorization.split(' ')[1];
+    const token = authHeader.split(' ')[1];
 
     try {
       const decoded = jwtToken.verifyToken(token);
 
-      const user = await User.findById(decoded.userId);
+      const user = await User.findById(decoded.userId)
+        .select('_id fullName email phoneNumber roles profileImage isBlocked passwordChangedDate')
+        .lean();
 
       if (!user) {
         res.status(401);
