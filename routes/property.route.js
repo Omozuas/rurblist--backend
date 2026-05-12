@@ -11,7 +11,7 @@ Route.post(
   '/',
   Checker.authmiddleware,
   Checker.allowRoles('Agent', 'Landlord', 'Admin'),
-  Upload.multiple('images'),
+  Upload.fields([{ name: 'images', maxCount: 6 }]),
   PropertyController.createProperty,
 );
 
@@ -81,7 +81,7 @@ Route.patch(
   '/:id',
   Checker.authmiddleware,
   Checker.allowRoles('Agent', 'Landlord', 'Admin'),
-  Upload.multiple('images'),
+  Upload.fields([{ name: 'images', maxCount: 6 }]),
   PropertyController.updateProperty,
 );
 

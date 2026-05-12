@@ -13,8 +13,10 @@ const mongoose = require('mongoose');
 const DojahService = require('../config/dojahService');
 
 const cleanupFiles = async (files = []) => {
+  const fileList = Array.isArray(files) ? files : Object.values(files || {}).flat();
+
   await Promise.all(
-    files.map((file) =>
+    fileList.map((file) =>
       file?.path ? fs.promises.unlink(file.path).catch(() => {}) : Promise.resolve(),
     ),
   );
@@ -213,8 +215,10 @@ class PropertyController {
         }
       }
 
-      if (req.files && req.files.length > 0) {
-        for (const file of req.files) {
+      const imageFiles = req.files?.images || [];
+
+      if (imageFiles.length > 0) {
+        for (const file of imageFiles) {
           const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
           const image = {
@@ -1169,11 +1173,13 @@ class PropertyController {
 
     // Validate images exist
 
-    if (!req.files || req.files.length < 3) {
+    const imageFiles = req.files?.images || [];
+
+    if (imageFiles.length < 3) {
       res.status(400);
       throw new Error('Minimum 3 property images required');
     }
-    if (req.files.length > 6) {
+    if (imageFiles.length > 6) {
       res.status(400);
       throw new Error('Maximum 6 images allowed');
     }
@@ -1192,7 +1198,7 @@ class PropertyController {
     let uploadedImages = [];
 
     try {
-      for (const file of req.files) {
+      for (const file of imageFiles) {
         const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
         uploadedImages.push({
