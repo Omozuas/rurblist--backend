@@ -9,13 +9,59 @@ const validateId = require('../helper/validatemongodb');
 const ApiFeatures = require('../helper/userQueryDB');
 const SendEmails = require('../helper/email_sender');
 
+const buildCursorResult = (items, pagination) => {
+  const hasNextPage = items.length > pagination.limit;
+  const data = hasNextPage ? items.slice(0, pagination.limit) : items;
+  const lastItem = data[data.length - 1];
+
+  return {
+    data,
+    hasNextPage,
+    nextCursor:
+      hasNextPage && lastItem
+        ? {
+            value: lastItem[pagination.sortField],
+            id: lastItem._id,
+          }
+        : null,
+  };
+};
+
+const getProfileModelFromRoles = (roles = []) => {
+  if (roles.includes('Home_Seeker')) return HomeSeeker;
+  if (roles.includes('Agent')) return Agent;
+  return null;
+};
+
+const buildSavedPropertyCursorFilter = (cursor) => {
+  if (!cursor) return {};
+
+  try {
+    const parsed = JSON.parse(cursor);
+
+    return {
+      $or: [
+        { createdAt: { $lt: new Date(parsed.value) } },
+        {
+          createdAt: new Date(parsed.value),
+          _id: { $lt: parsed.id },
+        },
+      ],
+    };
+  } catch {
+    const error = new Error('Invalid cursor format');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
 class UserController {
   static updateUserbyId = asynchandler(async (req, res) => {
-    const { id } = req.user;
+    const { _id } = req.user;
 
-    validateId.validateMongodbId(id);
+    validateId.validateMongodbId(_id);
 
-    const user = await User.findById(id);
+    const user = await User.findById(_id);
 
     if (!user) {
       res.status(404);
@@ -48,7 +94,7 @@ class UserController {
       // 👤 UPDATE USER
       // ===============================
       const updatedUser = await User.findByIdAndUpdate(
-        id,
+        _id,
         {
           username: req.body?.username ?? user.username,
           fullName: req.body?.fullName ?? user.fullName,
@@ -65,7 +111,7 @@ class UserController {
       // ===============================
       // 🧠 HANDLE HOMESEEKER KYC
       // ===============================
-      const homeSeeker = await HomeSeeker.findOne({ user: id });
+      const homeSeeker = await HomeSeeker.findOne({ user: _id });
 
       if (homeSeeker) {
         let shouldUpdateStatus = false;
@@ -163,17 +209,18 @@ class UserController {
       .cursorPaginate()
       .populate(['address', 'savedProperties']);
 
-    const users = await features.query;
-
-    const total = await User.countDocuments();
+    const fetchedUsers = await features.query.lean();
+    const { data, hasNextPage, nextCursor } = buildCursorResult(
+      fetchedUsers,
+      features.pagination,
+    );
 
     res.status(200).json({
       success: true,
-      totalUsers: total,
-      page: features.pagination.page,
-      limit: features.pagination.limit,
-      count: users.length,
-      users,
+      count: data.length,
+      users: data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -210,11 +257,11 @@ class UserController {
   });
 
   static getCurrentUser = asynchandler(async (req, res) => {
-    const { id } = req.user;
+    const { _id } = req.user;
 
-    validateId.validateMongodbId(id);
+    validateId.validateMongodbId(_id);
 
-    const user = await User.findById(id).select(
+    const user = await User.findById(_id).select(
       'fullName username profileImage roles phoneNumber email isLogin username',
     );
 
@@ -228,11 +275,11 @@ class UserController {
 
     // 🔥 Attach correct profile
     if (user.roles.includes('Home_Seeker')) {
-      homeSeeker = await HomeSeeker.findOne({ user: id }).populate('savedProperties');
+      homeSeeker = await HomeSeeker.findOne({ user: _id }).populate('savedProperties');
     }
 
     if (user.roles.includes('Agent')) {
-      agent = await Agent.findOne({ user: id }).populate('savedProperties');
+      agent = await Agent.findOne({ user: _id }).populate('savedProperties');
     }
 
     res.status(200).json({
@@ -324,11 +371,11 @@ class UserController {
   });
 
   static deleteMyAccount = asynchandler(async (req, res) => {
-    const { id } = req.user;
+    const { _id } = req.user;
 
-    validateId.validateMongodbId(id);
+    validateId.validateMongodbId(_id);
 
-    const user = await User.findByIdAndDelete(id);
+    const user = await User.findByIdAndDelete(_id);
 
     if (!user) {
       res.status(404);
@@ -346,12 +393,12 @@ class UserController {
   });
 
   static updateUserPasswordbyId = asynchandler(async (req, res) => {
-    const { id } = req.user;
+    const { _id } = req.user;
     const { oldPassword, password } = req.body;
     const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-    validateMongodbId(id);
+    validateId.validateMongodbId(_id);
 
-    const user = await User.findById(id);
+    const user = await User.findById(_id);
 
     if (!user) {
       res.status(404);
@@ -411,42 +458,45 @@ class UserController {
 
   static toggleSaveProperty = asynchandler(async (req, res) => {
     const { propertyId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id;
     validateId.validateMongodbId(propertyId);
-    const property = await Property.findById(propertyId);
+    const property = await Property.exists({
+      _id: propertyId,
+      isAvailable: true,
+    });
 
     if (!property) {
       res.status(404);
       throw new Error('Property not found');
     }
 
-    const user = await User.findById(userId);
+    const Model = getProfileModelFromRoles(req.user.roles);
 
-    let Model;
-
-    if (user.roles.includes('Home_Seeker')) {
-      Model = HomeSeeker;
-    } else if (user.roles.includes('Agent')) {
-      Model = Agent;
-    } else {
+    if (!Model) {
       res.status(403);
       throw new Error('Not allowed');
     }
 
-    const profile = await Model.findOne({ user: userId });
+    const profile = await Model.findOne({ user: userId }).select('savedProperties');
 
-    const isSaved = profile.savedProperties.includes(propertyId);
+    if (!profile) {
+      res.status(404);
+      throw new Error('Profile not found');
+    }
+
+    const isSaved = profile.savedProperties.some((id) => id.toString() === propertyId);
 
     if (isSaved) {
-      await Model.findOneAndUpdate({ user: userId }, { $pull: { savedProperties: propertyId } });
+      await Model.updateOne({ user: userId }, { $pull: { savedProperties: propertyId } });
 
       return res.status(200).json({
         success: true,
         message: 'Property removed from saved',
+        saved: false,
       });
     }
 
-    await Model.findOneAndUpdate(
+    await Model.updateOne(
       { user: userId },
       { $addToSet: { savedProperties: propertyId } }, // 🔥 prevents duplicates
     );
@@ -454,46 +504,63 @@ class UserController {
     res.status(200).json({
       success: true,
       message: 'Property saved',
+      saved: true,
     });
   });
 
   static getSavedProperties = asynchandler(async (req, res) => {
-    const userId = req.user.id;
+    const userId = req.user._id;
+    const limit = Math.min(parseInt(req.query.limit) || 12, 50);
 
-    const user = await User.findById(userId);
+    const Model = getProfileModelFromRoles(req.user.roles);
 
-    let profile;
-
-    if (user.roles.includes('Home_Seeker')) {
-      profile = await HomeSeeker.findOne({ user: userId }).populate({
-        path: 'savedProperties',
-        populate: {
-          path: 'owner',
-          select: 'fullName profileImage roles phoneNumber',
-        },
-      });
-    } else if (user.roles.includes('Agent')) {
-      profile = await Agent.findOne({ user: userId }).populate({
-        path: 'savedProperties',
-        populate: {
-          path: 'owner',
-          select: 'fullName profileImage roles phoneNumber',
-        },
-      });
-    } else {
+    if (!Model) {
       res.status(403);
       throw new Error('This role cannot have saved properties');
     }
+
+    const profile = await Model.findOne({ user: userId }).select('savedProperties').lean();
 
     if (!profile) {
       res.status(404);
       throw new Error('Profile not found');
     }
 
+    const savedIds = profile.savedProperties || [];
+
+    const query = {
+      _id: { $in: savedIds },
+      ...buildSavedPropertyCursorFilter(req.query.cursor),
+    };
+
+    const fetchedProperties = await Property.find(query)
+      .populate({
+        path: 'owner',
+        populate: {
+          path: 'user',
+          select: 'fullName profileImage roles phoneNumber',
+        },
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const hasNextPage = fetchedProperties.length > limit;
+    const data = hasNextPage ? fetchedProperties.slice(0, limit) : fetchedProperties;
+    const lastItem = data[data.length - 1];
+
     res.status(200).json({
       success: true,
-      count: profile.savedProperties?.length || 0,
-      data: profile.savedProperties,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor:
+        hasNextPage && lastItem
+          ? {
+              value: lastItem.createdAt,
+              id: lastItem._id,
+            }
+          : null,
     });
   });
 }

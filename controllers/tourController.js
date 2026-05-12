@@ -7,6 +7,46 @@ const Tour = require('../models/Tour');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 
+const buildCursorFilter = (cursor, field = 'createdAt') => {
+  if (!cursor) return {};
+
+  try {
+    const parsed = JSON.parse(cursor);
+
+    return {
+      $or: [
+        { [field]: { $lt: new Date(parsed.value) } },
+        {
+          [field]: new Date(parsed.value),
+          _id: { $lt: parsed.id },
+        },
+      ],
+    };
+  } catch {
+    const error = new Error('Invalid cursor format');
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
+const buildCursorResponse = (items, limit, field = 'createdAt') => {
+  const hasNextPage = items.length > limit;
+  const data = hasNextPage ? items.slice(0, limit) : items;
+  const lastItem = data[data.length - 1];
+
+  return {
+    data,
+    hasNextPage,
+    nextCursor:
+      hasNextPage && lastItem
+        ? {
+            value: lastItem[field],
+            id: lastItem._id,
+          }
+        : null,
+  };
+};
+
 class TourController {
   /**
    * 📌 CREATE TOUR (with optional note)
@@ -254,7 +294,12 @@ class TourController {
   });
 
   static getUserTours = asynchandler(async (req, res) => {
-    const tours = await Tour.find({ user: req.user._id })
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+    const tours = await Tour.find({
+      user: req.user._id,
+      ...buildCursorFilter(req.query.cursor),
+    })
       .populate('property', 'title location')
       .populate('user', 'fullName email roles profileImage')
       .populate({
@@ -262,10 +307,18 @@ class TourController {
         select: 'firstName _id lastName',
         populate: { path: 'user', select: 'fullName email roles profileImage' },
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(tours, limit);
 
     res.status(200).json({
-      data: tours,
+      success: true,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -273,8 +326,10 @@ class TourController {
    * 📥 GET AGENT TOURS
    */
   static getAgentTours = asynchandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
     // ✅ Step 1: Find agent by user
-    const agent = await Agent.findOne({ user: req.user._id });
+    const agent = await Agent.findOne({ user: req.user._id }).select('_id').lean();
 
     if (!agent) {
       res.status(404);
@@ -282,7 +337,10 @@ class TourController {
     }
 
     // ✅ Step 2: Get tours using agent._id
-    const tours = await Tour.find({ agent: agent._id })
+    const tours = await Tour.find({
+      agent: agent._id,
+      ...buildCursorFilter(req.query.cursor),
+    })
       .populate('property', 'title location')
       .populate('user', 'fullName email roles profileImage')
       .populate({
@@ -293,12 +351,18 @@ class TourController {
           select: 'fullName email roles profileImage',
         },
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(tours, limit);
 
     res.status(200).json({
       success: true,
-      count: tours.length,
-      data: tours,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -350,15 +414,25 @@ class TourController {
    */
   static getMessages = asynchandler(async (req, res) => {
     const { conversationId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
 
     const messages = await Message.find({
       conversation: conversationId,
+      ...buildCursorFilter(req.query.cursor),
     })
-      .sort({ createdAt: 1 })
-      .populate('sender', 'fullName email');
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .populate('sender', 'fullName email')
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(messages, limit);
 
     res.status(200).json({
-      data: messages,
+      success: true,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -366,15 +440,30 @@ class TourController {
    * 📂 GET USER CONVERSATIONS
    */
   static getUserConversations = asynchandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
     const conversations = await Conversation.find({
       user: req.user._id,
+      ...buildCursorFilter(req.query.cursor, 'updatedAt'),
     })
       .populate('agent')
       .populate('lastMessage')
-      .sort({ updatedAt: -1 });
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(
+      conversations,
+      limit,
+      'updatedAt',
+    );
 
     res.status(200).json({
-      data: conversations,
+      success: true,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -382,15 +471,37 @@ class TourController {
    * 📂 GET AGENT CONVERSATIONS
    */
   static getAgentConversations = asynchandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+
+    const agent = await Agent.findOne({ user: req.user._id }).select('_id').lean();
+
+    if (!agent) {
+      res.status(404);
+      throw new Error('Agent profile not found');
+    }
+
     const conversations = await Conversation.find({
-      agent: req.user._id,
+      agent: agent._id,
+      ...buildCursorFilter(req.query.cursor, 'updatedAt'),
     })
       .populate('user', 'fullName email')
       .populate('lastMessage')
-      .sort({ updatedAt: -1 });
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const { data, hasNextPage, nextCursor } = buildCursorResponse(
+      conversations,
+      limit,
+      'updatedAt',
+    );
 
     res.status(200).json({
-      data: conversations,
+      success: true,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 

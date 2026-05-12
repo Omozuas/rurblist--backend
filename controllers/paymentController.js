@@ -19,6 +19,10 @@ const convertToSmallestUnit = (amount, currency) => {
   return amount * 100;
 };
 
+const buildPaystackChannels = (paymentMethod) => {
+  return paymentMethod ? [paymentMethod] : undefined;
+};
+
 class PaymentController {
   /**
    * 💰 INITIATE TOUR PAYMENT
@@ -46,28 +50,27 @@ class PaymentController {
     }
 
     const reference = crypto.randomBytes(20).toString('hex');
+    let payment = null;
 
     // ✅ Create payment record
-    const payment = await Payment.create({
-      user: user._id,
-      agent: tour.agent,
-      property: tour.property,
-      tour: tour._id,
-      paymentFor: 'tour',
-      amount: tour.price,
-      currency,
-      reference,
-      status: 'pending',
-    });
+    try {
+      payment = await Payment.create({
+        user: user._id,
+        agent: tour.agent,
+        property: tour.property,
+        tour: tour._id,
+        paymentFor: 'tour',
+        amount: tour.price,
+        currency,
+        reference,
+        status: 'pending',
+      });
 
-    const response = await axios.post(
-      `${PAYSTACK_BASE_URL}/transaction/initialize`,
-      {
+      const payload = {
         email: user.email,
         amount: convertToSmallestUnit(tour.price, currency),
         currency,
         reference,
-        channels: [paymentMethod],
         metadata: {
           paymentId: payment._id,
           type: 'tour',
@@ -76,19 +79,34 @@ class PaymentController {
           userPhone: user.phoneNumber,
         },
         callback_url: `${process.env.FRONTEND_URL}/payment-tour/success`,
-      },
-      {
+      };
+
+      const channels = buildPaystackChannels(paymentMethod);
+      if (channels) payload.channels = channels;
+
+      const response = await axios.post(`${PAYSTACK_BASE_URL}/transaction/initialize`, payload, {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         },
         timeout: 30000,
-      },
-    );
+      });
 
-    res.status(200).json({
-      message: 'Payment initialized',
-      data: response.data.data,
-    });
+      return res.status(200).json({
+        success: true,
+        message: 'Payment initialized',
+        data: response.data.data,
+      });
+    } catch (error) {
+      if (payment?._id) {
+        await Payment.deleteOne({ _id: payment._id, status: 'pending' });
+      }
+
+      return res.status(error.response?.status || 500).json({
+        success: false,
+        message: 'Payment initialization failed',
+        error: error.response?.data || error.message,
+      });
+    }
   });
 
   /**
@@ -217,9 +235,8 @@ class PaymentController {
       callback_url: `${process.env.FRONTEND_URL}/payment-tour/success`,
     };
 
-    if (paymentMethod) {
-      payload.channels = [paymentMethod];
-    }
+    const channels = buildPaystackChannels(paymentMethod);
+    if (channels) payload.channels = channels;
 
     try {
       const response = await axios.post(`${PAYSTACK_BASE_URL}/transaction/initialize`, payload, {
@@ -243,6 +260,9 @@ class PaymentController {
         paymentId: payment._id,
         paymentFor: payment.paymentFor,
       });
+
+      await Verification.deleteOne({ _id: verification._id, status: 'pending' });
+      await Payment.deleteOne({ _id: payment._id, status: 'pending' });
 
       return res.status(error.response?.status || 500).json({
         success: false,

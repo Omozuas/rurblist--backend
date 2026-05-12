@@ -1,5 +1,7 @@
 // utils/propertySearch.js
 
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 class PropertySearch {
   constructor(query, queryString) {
     this.query = query;
@@ -20,17 +22,19 @@ class PropertySearch {
    */
   search() {
     if (this.queryString.search) {
-      const keyword = this.queryString.search;
+      const keyword = escapeRegex(String(this.queryString.search).trim().slice(0, 80));
 
-      this.query = this.query.find({
-        // ...this.baseFilter,
-        $or: [
-          { title: { $regex: keyword, $options: 'i' } },
-          { description: { $regex: keyword, $options: 'i' } },
-          { 'location.city': { $regex: keyword, $options: 'i' } },
-          { 'location.state': { $regex: keyword, $options: 'i' } },
-        ],
-      });
+      if (keyword) {
+        this.query = this.query.find({
+          // ...this.baseFilter,
+          $or: [
+            { title: { $regex: keyword, $options: 'i' } },
+            { description: { $regex: keyword, $options: 'i' } },
+            { 'location.city': { $regex: keyword, $options: 'i' } },
+            { 'location.state': { $regex: keyword, $options: 'i' } },
+          ],
+        });
+      }
     }
     if (process.env.DEBUG_QUERIES === 'true') console.log(`search:${this.query}`);
     return this;

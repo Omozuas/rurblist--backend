@@ -33,6 +33,24 @@ const createHttpError = (message, statusCode = 400) => {
   return error;
 };
 
+const buildCursorResult = (items, pagination) => {
+  const hasNextPage = items.length > pagination.limit;
+  const data = hasNextPage ? items.slice(0, pagination.limit) : items;
+  const lastItem = data[data.length - 1];
+
+  return {
+    data,
+    hasNextPage,
+    nextCursor:
+      hasNextPage && lastItem
+        ? {
+            value: lastItem[pagination.sortField],
+            id: lastItem._id,
+          }
+        : null,
+  };
+};
+
 const getBuyerNames = ({ user, profile, roleFolder }) => {
   if (roleFolder === 'agents') {
     return {
@@ -122,52 +140,18 @@ class PropertyController {
             select: 'fullName profileImage roles phoneNumber',
           },
         },
-        {
-          path: 'comments',
-        },
       ]);
 
     const fetchedProperties = await features.query.lean();
-    const hasNextPage = fetchedProperties.length > features.pagination.limit;
-    const properties = hasNextPage
-      ? fetchedProperties.slice(0, features.pagination.limit)
-      : fetchedProperties;
-
-    // 🔥 COMMENT COUNT (temporary)
-    const propertyIds = properties.map((p) => p._id);
-
-    const commentsCount = await Comment.aggregate([
-      { $match: { property: { $in: propertyIds } } },
-      { $group: { _id: '$property', count: { $sum: 1 } } },
-    ]);
-
-    const countMap = {};
-    commentsCount.forEach((c) => {
-      countMap[c._id.toString()] = c.count;
-    });
-
-    const result = properties.map((property) => ({
-      ...property,
-      commentsCount: countMap[property._id.toString()] || 0,
-    }));
-
-    // ✅ cursor fix
-    const sortField = features.pagination.sortField;
-
-    const lastItem = result[result.length - 1];
-
-    const nextCursor =
-      hasNextPage && lastItem
-        ? {
-            value: lastItem[sortField],
-            id: lastItem._id,
-          }
-        : null;
+    const { data, hasNextPage, nextCursor } = buildCursorResult(
+      fetchedProperties,
+      features.pagination,
+    );
 
     res.status(200).json({
       success: true,
-      count: result.length,
-      data: result,
+      count: data.length,
+      data,
       hasNextPage,
       nextCursor,
     });
@@ -218,17 +202,19 @@ class PropertyController {
       const imageFiles = req.files?.images || [];
 
       if (imageFiles.length > 0) {
-        for (const file of imageFiles) {
-          const result = await UploadCloud.upload(file.path, 'rublist/properties');
+        const newImages = await Promise.all(
+          imageFiles.map(async (file) => {
+            const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
-          const image = {
-            url: result.url,
-            public_id: result.public_id,
-          };
+            return {
+              url: result.url,
+              public_id: result.public_id,
+            };
+          }),
+        );
 
-          uploadedImages.push(image);
-          property.images.push(image);
-        }
+        uploadedImages.push(...newImages);
+        property.images.push(...newImages);
       }
 
       const allowedFields = [
@@ -359,43 +345,43 @@ class PropertyController {
     const { id } = req.params;
     const userId = req.user._id;
     validateId.validateMongodbId(id);
-    const property = await Property.findById(id);
+    const property = await Property.exists({ _id: id });
 
     if (!property) {
       res.status(404);
       throw new Error('Property not found');
     }
 
-    const hasLiked = property.likes.some((uid) => uid.toString() === userId.toString());
-
-    const hasUnliked = property.unlikes.some((uid) => uid.toString() === userId.toString());
-
-    // 🔥 Toggle OFF unlike
-    if (hasUnliked) {
-      await Property.findByIdAndUpdate(id, {
+    const removedUnlike = await Property.updateOne(
+      { _id: id, unlikes: userId },
+      {
         $pull: { unlikes: userId },
         $inc: { unlikesCount: -1 },
-      });
+      },
+    );
 
+    if (removedUnlike.modifiedCount > 0) {
       return res.status(200).json({
         success: true,
         message: 'Unlike removed',
       });
     }
 
-    // 🔥 Remove like if exists
-    if (hasLiked) {
-      await Property.findByIdAndUpdate(id, {
+    await Property.updateOne(
+      { _id: id, likes: userId },
+      {
         $pull: { likes: userId },
         $inc: { likesCount: -1 },
-      });
-    }
+      },
+    );
 
-    // 🔥 Add unlike
-    await Property.findByIdAndUpdate(id, {
-      $addToSet: { unlikes: userId },
-      $inc: { unlikesCount: 1 },
-    });
+    await Property.updateOne(
+      { _id: id, unlikes: { $ne: userId } },
+      {
+        $addToSet: { unlikes: userId },
+        $inc: { unlikesCount: 1 },
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -407,43 +393,43 @@ class PropertyController {
     const { id } = req.params;
     const userId = req.user._id;
     validateId.validateMongodbId(id);
-    const property = await Property.findById(id);
+    const property = await Property.exists({ _id: id });
 
     if (!property) {
       res.status(404);
       throw new Error('Property not found');
     }
 
-    const hasLiked = property.likes.some((uid) => uid.toString() === userId.toString());
-
-    const hasUnliked = property.unlikes.some((uid) => uid.toString() === userId.toString());
-
-    // 🔥 Toggle OFF like
-    if (hasLiked) {
-      await Property.findByIdAndUpdate(id, {
+    const removedLike = await Property.updateOne(
+      { _id: id, likes: userId },
+      {
         $pull: { likes: userId },
         $inc: { likesCount: -1 },
-      });
+      },
+    );
 
+    if (removedLike.modifiedCount > 0) {
       return res.status(200).json({
         success: true,
         message: 'Like removed',
       });
     }
 
-    // 🔥 Remove unlike if exists
-    if (hasUnliked) {
-      await Property.findByIdAndUpdate(id, {
+    await Property.updateOne(
+      { _id: id, unlikes: userId },
+      {
         $pull: { unlikes: userId },
         $inc: { unlikesCount: -1 },
-      });
-    }
+      },
+    );
 
-    // 🔥 Add like
-    await Property.findByIdAndUpdate(id, {
-      $addToSet: { likes: userId },
-      $inc: { likesCount: 1 },
-    });
+    await Property.updateOne(
+      { _id: id, likes: { $ne: userId } },
+      {
+        $addToSet: { likes: userId },
+        $inc: { likesCount: 1 },
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -453,14 +439,16 @@ class PropertyController {
 
   static addReply = asynchandler(async (req, res) => {
     const { commentId } = req.params;
-    const { text } = req.body;
+    const text = req.body.text?.trim();
 
-    if (!text || text.trim().length < 2) {
+    validateId.validateMongodbId(commentId);
+
+    if (!text || text.length < 2) {
       res.status(400);
       throw new Error('Reply must be at least 2 characters');
     }
 
-    const parent = await Comment.findById(commentId);
+    const parent = await Comment.findById(commentId).select('property');
 
     if (!parent) {
       res.status(404);
@@ -476,16 +464,14 @@ class PropertyController {
     const reply = await Comment.create({
       property: parent.property,
       user: req.user._id,
-      text: text.trim(),
+      text,
       parentComment: parent._id,
     });
 
-    await reply.populate('user', 'fullName profileImage');
-
-    // 🔥 increment comment count
-    await Property.findByIdAndUpdate(parent.property, {
-      $inc: { commentsCount: 1 },
-    });
+    await Promise.all([
+      reply.populate('user', 'fullName profileImage'),
+      Property.updateOne({ _id: parent.property }, { $inc: { commentsCount: 1 } }),
+    ]);
 
     res.status(201).json({
       success: true,
@@ -496,34 +482,36 @@ class PropertyController {
   static addComment = asynchandler(async (req, res) => {
     const { id } = req.params;
 
-    const { text } = req.body;
+    const text = req.body.text?.trim();
 
     validateId.validateMongodbId(id);
 
-    if (!text || text.trim().length < 2) {
+    if (!text || text.length < 2) {
       res.status(400);
       throw new Error('Comment must be at least 2 characters');
     }
 
-    const property = await Property.findById(id);
+    const property = await Property.exists({
+      _id: id,
+      isAvailable: true,
+    });
 
-    if (!property || !property.isAvailable) {
+    if (!property) {
       res.status(404);
       throw new Error('Property not available for comments');
     }
 
     const comment = await Comment.create({
       property: id,
-      user: req.user.id,
-      text: text.trim(),
+      user: req.user._id,
+      text,
       parentComment: null,
     });
-    await comment.populate('user', 'fullName profileImage');
 
-    // 🔥 increment comment count
-    await Property.findByIdAndUpdate(id, {
-      $inc: { commentsCount: 1 },
-    });
+    await Promise.all([
+      comment.populate('user', 'fullName profileImage'),
+      Property.updateOne({ _id: id }, { $inc: { commentsCount: 1 } }),
+    ]);
 
     res.status(201).json({
       success: true,
@@ -548,18 +536,20 @@ class PropertyController {
     const limitNum = Math.min(parseInt(limit) || 5, 50);
     const skip = (pageNum - 1) * limitNum;
 
-    const replies = await Comment.find({
-      parentComment: commentId,
-    })
-      .populate('user', 'fullName profileImage roles')
-      .sort({ createdAt: 1 })
-      .skip(skip)
-      .limit(limitNum)
-      .lean();
+    const [replies, total] = await Promise.all([
+      Comment.find({
+        parentComment: commentId,
+      })
+        .populate('user', 'fullName profileImage roles')
+        .sort({ createdAt: 1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
 
-    const total = await Comment.countDocuments({
-      parentComment: commentId,
-    });
+      Comment.countDocuments({
+        parentComment: commentId,
+      }),
+    ]);
 
     const hasMore = skip + replies.length < total;
 
@@ -904,18 +894,26 @@ class PropertyController {
       .sort()
       .limitFields()
       .cursorPaginate();
-    const properties = await features.query.lean();
+    const fetchedProperties = await features.query.lean();
+    const { data, hasNextPage, nextCursor } = buildCursorResult(
+      fetchedProperties,
+      features.pagination,
+    );
 
     res.status(200).json({
       success: true,
-      count: properties.length,
-      data: properties,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
   static getSingleProperty = asynchandler(async (req, res) => {
     const { id } = req.params;
     const currentUserId = req.user ? req.user._id : null;
+    const commentsLimit = Math.min(parseInt(req.query.commentsLimit) || 10, 50);
+    const repliesLimit = Math.min(parseInt(req.query.repliesLimit) || 3, 20);
 
     validateId.validateMongodbId(id);
 
@@ -947,6 +945,10 @@ class PropertyController {
           parentComment: null,
         },
       },
+
+      { $sort: { createdAt: -1, _id: -1 } },
+
+      { $limit: commentsLimit + 1 },
 
       // user
       {
@@ -1022,6 +1024,8 @@ class PropertyController {
             },
 
             { $sort: { createdAt: 1 } },
+
+            { $limit: repliesLimit },
           ],
           as: 'replies',
         },
@@ -1037,11 +1041,20 @@ class PropertyController {
           },
         },
       },
-
-      { $sort: { createdAt: -1 } },
+      { $sort: { createdAt: -1, _id: -1 } },
     ]);
 
+    let hasMoreComments = false;
+
+    if (comments.length > commentsLimit) {
+      comments.pop();
+      hasMoreComments = true;
+    }
+
     property.comments = comments;
+    property.hasMoreComments = hasMoreComments;
+    property.commentsLimit = commentsLimit;
+    property.repliesLimit = repliesLimit;
 
     res.status(200).json({
       success: true,
@@ -1075,7 +1088,6 @@ class PropertyController {
 
   static getAgentsPropertiesById = asynchandler(async (req, res) => {
     const userId = req.params.id;
-    console.log('Agent ID:', userId);
     validateId.validateMongodbId(userId);
 
     const agent = await Agent.findOne({ user: userId });
@@ -1102,12 +1114,18 @@ class PropertyController {
       .sort()
       .limitFields()
       .cursorPaginate();
-    const properties = await features.query.lean();
+    const fetchedProperties = await features.query.lean();
+    const { data, hasNextPage, nextCursor } = buildCursorResult(
+      fetchedProperties,
+      features.pagination,
+    );
 
     res.status(200).json({
       success: true,
-      count: properties.length,
-      data: properties,
+      count: data.length,
+      data,
+      hasNextPage,
+      nextCursor,
     });
   });
 
@@ -1198,14 +1216,16 @@ class PropertyController {
     let uploadedImages = [];
 
     try {
-      for (const file of imageFiles) {
-        const result = await UploadCloud.upload(file.path, 'rublist/properties');
+      uploadedImages = await Promise.all(
+        imageFiles.map(async (file) => {
+          const result = await UploadCloud.upload(file.path, 'rublist/properties');
 
-        uploadedImages.push({
-          url: result.url,
-          public_id: result.public_id,
-        });
-      }
+          return {
+            url: result.url,
+            public_id: result.public_id,
+          };
+        }),
+      );
       // ===============================
       // 🏗 Create Property Document
       // ===============================
