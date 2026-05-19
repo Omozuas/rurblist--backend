@@ -9,72 +9,49 @@ const HomeSeeker = require('../../../models/HomeSeeker');
 const Property = require('../../../models/Property');
 const Verification = require('../../../models/Verfication');
 const { generateReceipt, generateReceiptBuffer } = require('../../../utils/receipt/generateReceipt');
+const logger = require('../../../utils/logger');
 const SendEmails = require('../../email/emailService');
 const PaymentContract = require('../contracts/paymentContract');
 
 module.exports = {
   payForTour: asyncHandler(async (req, res) => {
-    try {
-      const result = await PaymentContract.payForTour(
-        {
-          Payment,
-          Tour,
-          axios,
-          crypto,
-          paystackBaseUrl: process.env.PAYSTACK_BASE_URL,
-        },
-        {
-          tourId: req.params.tourId,
-          body: req.body,
-          user: req.user,
-        },
-      );
+    const result = await PaymentContract.payForTour(
+      {
+        Payment,
+        Tour,
+        axios,
+        crypto,
+        paystackBaseUrl: process.env.PAYSTACK_BASE_URL,
+      },
+      {
+        tourId: req.params.tourId,
+        body: req.body,
+        user: req.user,
+      },
+    );
 
-      return res.status(200).json(result);
-    } catch (error) {
-      if (error.payload) {
-        return res.status(error.statusCode || 500).json({
-          success: false,
-          message: error.message,
-          error: error.payload,
-        });
-      }
-
-      throw error;
-    }
+    return res.status(200).json(result);
   }),
 
   payForProperty: asyncHandler(async (req, res) => {
-    try {
-      const result = await PaymentContract.payForProperty(
-        {
-          Payment,
-          Property,
-          Plan,
-          Verification,
-          axios,
-          crypto,
-          paystackBaseUrl: process.env.PAYSTACK_BASE_URL,
-        },
-        {
-          propertyId: req.params.propertyId,
-          body: req.body,
-          user: req.user,
-        },
-      );
+    const result = await PaymentContract.payForProperty(
+      {
+        Payment,
+        Property,
+        Plan,
+        Verification,
+        axios,
+        crypto,
+        paystackBaseUrl: process.env.PAYSTACK_BASE_URL,
+      },
+      {
+        propertyId: req.params.propertyId,
+        body: req.body,
+        user: req.user,
+      },
+    );
 
-      return res.status(200).json(result);
-    } catch (error) {
-      if (error.payload) {
-        return res.status(error.statusCode || 500).json({
-          success: false,
-          message: error.message,
-          error: error.payload,
-        });
-      }
-
-      throw error;
-    }
+    return res.status(200).json(result);
   }),
 
   verifyPayment: asyncHandler(async (req, res) => {
@@ -131,8 +108,8 @@ module.exports = {
           paymentId: result.paymentId,
         },
       ).catch((error) => {
-        console.error('Webhook background processing failed:', {
-          message: error.message,
+        logger.error('Webhook background processing failed', {
+          error,
           reference: result.reference,
           event: result.event.event,
         });

@@ -59,11 +59,12 @@
 - [x] Move self-ping cron into `src/jobs` and make it opt-in/configurable.
 - [x] Add newly introduced runtime env keys to `.env` and validate optional numeric/boolean tuning values at startup.
 - [x] Move Mongoose models into `src/models` and add a central model export index.
-- [ ] Repeat pattern for one additional module (start with `user` routes).
-- [ ] Improve error/status consistency in controllers (remove duplicated `res.status()` where possible).
-- [ ] Ensure lint/tests/start script still run.
+- [x] Add project-wide syntax check script for `server.js` and `src/**/*.js`.
+- [x] Improve controller error response consistency by routing payment/KYC failures through the central error handler.
+- [x] Add repeatable smoke-test script for health/readiness/auth/user checks.
+- [x] Ensure syntax check script runs across the migrated app.
 
 ## Verification
 
-- [ ] Run `node -c server.js` and `node -c src/app.js`.
-- [ ] Start server and smoke-test key endpoints: `/health`, `/readiness`, `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/user/me`.
+- [x] Run `npm run check`.
+- [ ] Start server and run `npm run smoke`.

@@ -1,5 +1,4 @@
 const express = require('express');
-const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const AuthController = require('../../services/auth/controllers/authControllerAdapter');
 const Checker = require('../../middleware/checker');
@@ -11,69 +10,50 @@ const {
   resendOtpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  refreshAccessTokenSchema,
   verifyGoogleOtpSchema,
 } = require('../../validators/authSchemas');
 const { validateBody } = require('../../middleware/validate');
+const { createRateLimiter, keyByIpAndEmail } = require('../../middleware/rateLimiter');
 
 const router = express.Router();
 
-// Rate limiters (same behavior)
-// Rate limiter helpers: key off (IP + email) when email exists to prevent IP rotation abuse.
-// If email is missing, it falls back to just IP.
-const limiterKeyFor = (req) => {
-  const ip = ipKeyGenerator(req.ip);
-  const email = req.body?.email;
-  return email ? `${ip}:${email.toLowerCase().trim()}` : ip;
-};
-
-const forgotPasswordLimiter = rateLimit({
+const forgotPasswordLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  keyGenerator: limiterKeyFor,
-  message: {
-    success: false,
-    message: 'Too many reset attempts. Please try again in 15 minutes',
-  },
+  keyGenerator: keyByIpAndEmail,
+  message: 'Too many reset attempts. Please try again in 15 minutes',
+  code: 'FORGOT_PASSWORD_RATE_LIMITED',
 });
 
-const resetPasswordLimiter = rateLimit({
+const resetPasswordLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  keyGenerator: limiterKeyFor,
-  message: {
-    success: false,
-    message: 'Too many attempts. Please try again later',
-  },
+  keyGenerator: keyByIpAndEmail,
+  message: 'Too many attempts. Please try again later',
+  code: 'RESET_PASSWORD_RATE_LIMITED',
 });
 
-const loginLimiter = rateLimit({
+const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  keyGenerator: limiterKeyFor,
-  message: {
-    success: false,
-    message: 'Too many login attempts. Try again later.',
-  },
+  keyGenerator: keyByIpAndEmail,
+  message: 'Too many login attempts. Try again later.',
+  code: 'LOGIN_RATE_LIMITED',
 });
 
-const otpLimiter = rateLimit({
+const otpLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000,
   max: 5,
-  keyGenerator: limiterKeyFor,
-  message: {
-    success: false,
-    message: 'Too many OTP attempts. Try again later.',
-  },
+  keyGenerator: keyByIpAndEmail,
+  message: 'Too many OTP attempts. Try again later.',
+  code: 'OTP_RATE_LIMITED',
 });
 
-const signupLimiter = rateLimit({
+const signupLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   max: 10,
-  message: {
-    success: false,
-    message: 'Too many accounts created. Try again later.',
-  },
+  message: 'Too many accounts created. Try again later.',
+  code: 'SIGNUP_RATE_LIMITED',
 });
 
 router.post(
@@ -118,28 +98,24 @@ router.post(
   AuthController.resetPassword,
 );
 
-const refreshTokenLimiter = rateLimit({
+const refreshTokenLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: {
-    success: false,
-    message: 'Too many refresh attempts. Try again later.',
-  },
+  message: 'Too many refresh attempts. Try again later.',
+  code: 'REFRESH_TOKEN_RATE_LIMITED',
 });
 
-const googleOtpLimiter = rateLimit({
+const googleOtpLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000,
   max: 5,
-  message: {
-    success: false,
-    message: 'Too many OTP attempts. Try again later.',
-  },
+  message: 'Too many OTP attempts. Try again later.',
+  code: 'GOOGLE_OTP_RATE_LIMITED',
 });
 
 router.post(
   '/refresh-token',
   refreshTokenLimiter,
-  validateBody({ schema: refreshAccessTokenSchema, validator: validate }),
+  AuthController.requireRefreshToken,
   AuthController.refreshAccessToken,
 );
 

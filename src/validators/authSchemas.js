@@ -1,25 +1,13 @@
 // Minimal request schemas to start Phase 2 without changing endpoint behavior.
 // We’ll validate in routes before calling controllers.
 
-function hasString(v) {
-  return typeof v === 'string' && v.trim().length > 0;
-}
-
-function validate(schema, body) {
-  const errors = [];
-
-  for (const [key, rule] of Object.entries(schema)) {
-    const value = body ? body[key] : undefined;
-    const err = rule(value, body);
-    if (err) errors.push({ field: key, message: err });
-  }
-
-  return errors;
-}
-
-const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-const phoneRegex = /^(?:\+234|0)[789][01]\d{8}$/;
-const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+const {
+  emailRegex,
+  phoneRegex,
+  strongPasswordRegex,
+  minPasswordLength,
+} = require('../constants/authRules');
+const { hasString, validate } = require('./common');
 
 const registerSchema = {
   email: (v) => {
@@ -28,8 +16,10 @@ const registerSchema = {
   },
   password: (v) => {
     if (!hasString(v)) return 'password is required';
-    if (v.length < 8) return 'Password should be at least 8 characters long';
-    return strongPassword.test(v)
+    if (v.length < minPasswordLength) {
+      return `Password should be at least ${minPasswordLength} characters long`;
+    }
+    return strongPasswordRegex.test(v)
       ? null
       : 'Password must contain uppercase, lowercase, number, special character and be at least 8 characters';
   },
@@ -71,8 +61,10 @@ const resetPasswordSchema = {
   otp: (v) => (hasString(v) ? null : 'otp is required'),
   password: (v) => {
     if (!hasString(v)) return 'password is required';
-    if (v.length < 8) return 'Password should be at least 8 characters long';
-    return strongPassword.test(v)
+    if (v.length < minPasswordLength) {
+      return `Password should be at least ${minPasswordLength} characters long`;
+    }
+    return strongPasswordRegex.test(v)
       ? null
       : 'Password must contain uppercase, lowercase, number, special character and be at least 8 characters';
   },
@@ -86,12 +78,8 @@ const loginSchema = {
   password: (v) => (hasString(v) ? null : 'password is required'),
 };
 
-const refreshAccessTokenSchema = {
-  refreshToken: (v) => (hasString(v) ? null : 'refreshToken is required'),
-};
-
 const verifyGoogleOtpSchema = {
-  otp: (v) => (hasString(v) ? null : 'otp is required'),
+  otp: (v, body) => (hasString(v) || hasString(body?.ticket) ? null : 'otp or ticket is required'),
 };
 
 module.exports = {
@@ -102,6 +90,5 @@ module.exports = {
   resendOtpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  refreshAccessTokenSchema,
   verifyGoogleOtpSchema,
 };

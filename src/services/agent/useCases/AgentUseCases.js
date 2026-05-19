@@ -1,4 +1,5 @@
 const AppError = require('../../../utils/AppError');
+const logger = require('../../../utils/logger');
 
 const cleanupUploadedFiles = async (fs, files) => {
   for (const field of Object.values(files || {})) {
@@ -311,7 +312,7 @@ const createAgent = async (deps, input) => {
 
       await SendEmails.sendAdminAgentNotification(agent);
     } catch (emailErr) {
-      console.log('Email error:', emailErr.message);
+      logger.error('Agent notification email failed', { error: emailErr });
     }
 
     await cleanupUploadedFiles(fs, files);
@@ -511,9 +512,7 @@ const updateAgent = async (deps, input) => {
 
   for (const field of restrictedFields) {
     if (body[field]) {
-      const err = new Error(`${field} cannot be updated`);
-      err.statusCode = 400;
-      throw err;
+      throw new AppError(`${field} cannot be updated`, 400);
     }
   }
 
@@ -596,7 +595,7 @@ const updateAgent = async (deps, input) => {
 
     deleteResults.forEach((result) => {
       if (result.status === 'rejected') {
-        console.log('Old Cloudinary file delete failed:', result.reason.message);
+        logger.warn('Old Cloudinary file delete failed', { error: result.reason });
       }
     });
 

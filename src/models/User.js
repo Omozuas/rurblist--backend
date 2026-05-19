@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 
-// Declare the userSchema of the Mongo model
-
-var userSchema = new mongoose.Schema(
+const userSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
@@ -94,6 +92,10 @@ var userSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-//Export the model
+userSchema.index({ otp: 1, otpExpires: 1 }, { sparse: true });
+userSchema.index({ passwordResetToken: 1, passwordResetExpires: 1 }, { sparse: true });
+userSchema.index({ isBlocked: 1 });
+userSchema.index({ isEmailVerified: 1 });
+
 const User = mongoose.model('User', userSchema);
 module.exports = User;

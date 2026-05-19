@@ -59,9 +59,7 @@ const getPlanById = async (deps, input) => {
   const plan = await Plan.findOne({ _id: id, isActive: true }).select('-__v -createdAt -updatedAt');
 
   if (!plan) {
-    const err = new Error('Plan not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Plan not found', 404);
   }
 
   return {

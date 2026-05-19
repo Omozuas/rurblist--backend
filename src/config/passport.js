@@ -6,6 +6,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const HomeSeeker = require('../models/HomeSeeker');
 const User = require('../models/User');
 const SendEmails = require('../services/email/emailService');
+const AppError = require('../utils/AppError');
 
 passport.use(
   new GoogleStrategy(
@@ -19,7 +20,7 @@ passport.use(
         const email = profile.emails?.[0]?.value;
 
         if (!email) {
-          return done(new Error('Google account did not provide an email'), null);
+          return done(new AppError('Google account did not provide an email', 400), null);
         }
 
         let user = await User.findOne({ googleId: profile.id });

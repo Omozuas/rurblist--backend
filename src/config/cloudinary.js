@@ -1,5 +1,6 @@
 const cloudinary = require('cloudinary').v2;
 const path = require('path');
+const AppError = require('../utils/AppError');
 
 const imageExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const rawExtensions = new Set(['.pdf']);
@@ -10,7 +11,7 @@ const assertCloudinaryConfig = () => {
   );
 
   if (missing.length) {
-    throw new Error(`Missing Cloudinary env vars: ${missing.join(', ')}`);
+    throw new AppError(`Missing Cloudinary env vars: ${missing.join(', ')}`, 500);
   }
 };
 
@@ -32,7 +33,7 @@ class UploadCloud {
       return 'raw';
     }
 
-    throw new Error(`Unsupported upload file type: ${ext || 'unknown'}`);
+    throw new AppError(`Unsupported upload file type: ${ext || 'unknown'}`, 400);
   }
 
   static async upload(filePath, folder = 'rurblist') {
@@ -58,7 +59,9 @@ class UploadCloud {
         resource_type: result.resource_type,
       };
     } catch (error) {
-      throw new Error(`Cloudinary Upload Error: ${error.message || JSON.stringify(error)}`);
+      throw error instanceof AppError
+        ? error
+        : new AppError(`Cloudinary Upload Error: ${error.message || JSON.stringify(error)}`, 502);
     }
   }
 
@@ -70,7 +73,9 @@ class UploadCloud {
         resource_type: resourceType,
       });
     } catch (error) {
-      throw new Error(`Cloudinary Delete Error: ${error.message || JSON.stringify(error)}`);
+      throw error instanceof AppError
+        ? error
+        : new AppError(`Cloudinary Delete Error: ${error.message || JSON.stringify(error)}`, 502);
     }
   }
 

@@ -60,8 +60,11 @@ function handleUpload(middleware) {
   return (req, res, next) => {
     middleware(req, res, (error) => {
       if (error) {
-        error.statusCode = error.statusCode || 400;
-        return next(error);
+        return next(
+          error instanceof AppError
+            ? error
+            : new AppError(error.message || 'Invalid file upload', error.statusCode || 400),
+        );
       }
 
       return next();

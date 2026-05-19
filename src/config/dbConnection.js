@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const logger = require('../utils/logger');
 
 async function connect() {
   try {
@@ -7,9 +8,9 @@ async function connect() {
       serverSelectionTimeoutMS: Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS) || 10000,
     });
 
-    console.log('rurblist connected to db');
+    logger.info('Database connected');
   } catch (error) {
-    console.error('Database connection failed:', error.message);
+    logger.error('Database connection failed', { error });
     throw error;
   }
 }

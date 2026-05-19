@@ -1,4 +1,5 @@
 const AppError = require('../AppError');
+const logger = require('../logger');
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -51,6 +52,12 @@ const pruneInvalidNumbers = (query, numericFields) => {
   });
 };
 
+const debugQuery = (stage, query) => {
+  if (process.env.DEBUG_QUERIES === 'true') {
+    logger.debug('Property query stage', { stage, query: String(query) });
+  }
+};
+
 class PropertySearch {
   constructor(query, queryString) {
     this.query = query;
@@ -81,7 +88,7 @@ class PropertySearch {
       }
     }
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`search:${this.query}`);
+    debugQuery('search', this.query);
     return this;
   }
 
@@ -128,7 +135,7 @@ class PropertySearch {
       ...parsedQuery,
     });
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`filter:${this.query}`);
+    debugQuery('filter', this.query);
     return this;
   }
 
@@ -149,7 +156,7 @@ class PropertySearch {
       });
     }
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`geo:${this.query}`);
+    debugQuery('geo', this.query);
     return this;
   }
 
@@ -160,7 +167,7 @@ class PropertySearch {
 
     this.query = this.query.sort(sortOption);
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`sort:${this.query}`);
+    debugQuery('sort', this.query);
     return this;
   }
 
@@ -172,7 +179,7 @@ class PropertySearch {
       this.query = this.query.select('-__v');
     }
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`limited:${this.query}`);
+    debugQuery('limited', this.query);
     return this;
   }
 
@@ -207,7 +214,7 @@ class PropertySearch {
 
     this.query = this.query.sort(sort).limit(this.pagination.limit + 1);
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`cursorPaginate:${this.query}`);
+    debugQuery('cursorPaginate', this.query);
     return this;
   }
 
@@ -218,7 +225,7 @@ class PropertySearch {
 
     this.query = this.query.skip(skip).limit(limit);
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`paginated:${this.query}`);
+    debugQuery('paginated', this.query);
     return this;
   }
 
@@ -238,7 +245,7 @@ class PropertySearch {
       }
     });
 
-    if (process.env.DEBUG_QUERIES === 'true') console.log(`populate:${this.query}`);
+    debugQuery('populate', this.query);
     return this;
   }
 }

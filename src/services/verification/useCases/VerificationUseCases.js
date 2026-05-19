@@ -1,12 +1,12 @@
+const AppError = require('../../../utils/AppError');
+
 const parseCursor = (cursor) => {
   if (!cursor) return null;
 
   try {
     return JSON.parse(cursor);
   } catch {
-    const err = new Error('Invalid cursor format');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid cursor format', 400);
   }
 };
 
@@ -133,28 +133,24 @@ const getVerificationById = async (deps, input) => {
   const { id, user } = input;
 
   const verification = await Verification.findById(id)
-    .populate('user', 'fullName email phoneNumber')
+    .populate('user', 'fullName email phoneNumber profileImage')
     .populate({
       path: 'agent',
-      select: 'firstName lastName companyName user',
+      select: 'firstName lastName companyName user selfieUrl',
       populate: {
         path: 'user',
-        select: 'fullName email phoneNumber',
+        select: 'fullName email phoneNumber profileImage',
       },
     })
     .populate('property', 'title price status location images slug')
     .populate('payment', 'amount currency status reference paidAt');
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   if (!canAccessVerification(verification, user)) {
-    const err = new Error('Not authorized to view this verification');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized to view this verification', 403);
   }
 
   return {
@@ -173,21 +169,15 @@ const downloadCertificate = async (deps, input) => {
   });
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   if (!canAccessVerification(verification, user)) {
-    const err = new Error('Not authorized to access this verification');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized to access this verification', 403);
   }
 
   if (!verification.certificate || !verification.certificate.url) {
-    const err = new Error('Certificate not uploaded yet');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Certificate not uploaded yet', 404);
   }
 
   return {
@@ -211,29 +201,21 @@ const downloadDocument = async (deps, input) => {
   });
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   if (!canAccessVerification(verification, user)) {
-    const err = new Error('Not authorized to access this verification');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized to access this verification', 403);
   }
 
   const document = verification.documents.id(documentId);
 
   if (!document) {
-    const err = new Error('Document not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Document not found', 404);
   }
 
   if (!document.file || !document.file.url) {
-    const err = new Error('No file uploaded for this document');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('No file uploaded for this document', 404);
   }
 
   return {
@@ -255,9 +237,7 @@ const updateVerification = async (deps, input) => {
   const verification = await Verification.findById(id);
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   if (status) verification.status = status;
@@ -297,17 +277,13 @@ const updateDocumentStatus = async (deps, input) => {
   const verification = await Verification.findById(verificationId);
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   const document = verification.documents.id(documentId);
 
   if (!document) {
-    const err = new Error('Document not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Document not found', 404);
   }
 
   if (status) document.status = status;
@@ -341,9 +317,7 @@ const addTimeline = async (deps, input) => {
   const verification = await Verification.findById(id);
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   verification.timeline.push({
@@ -368,17 +342,13 @@ const scheduleInspection = async (deps, input) => {
   const { scheduledAt, note = '' } = body;
 
   if (!scheduledAt) {
-    const err = new Error('scheduledAt is required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('scheduledAt is required', 400);
   }
 
   const verification = await Verification.findById(verificationId);
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   verification.status = 'inspection_scheduled';
@@ -413,9 +383,7 @@ const completeInspection = async (deps, input) => {
   const verification = await Verification.findById(verificationId);
 
   if (!verification) {
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   verification.inspection.completedAt = new Date();
@@ -455,27 +423,21 @@ const uploadDocumentFile = async (deps, input) => {
   const { status = 'submitted', note = '' } = body;
 
   if (!file) {
-    const err = new Error('Document file is required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Document file is required', 400);
   }
 
   const verification = await Verification.findById(verificationId);
 
   if (!verification) {
     await cleanupFile(fs, file.path);
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   const document = verification.documents.id(documentId);
 
   if (!document) {
     await cleanupFile(fs, file.path);
-    const err = new Error('Document not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Document not found', 404);
   }
 
   try {
@@ -517,18 +479,14 @@ const uploadCertificate = async (deps, input) => {
   const { verificationId, file } = input;
 
   if (!file) {
-    const err = new Error('Certificate file is required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Certificate file is required', 400);
   }
 
   const verification = await Verification.findById(verificationId);
 
   if (!verification) {
     await cleanupFile(fs, file.path);
-    const err = new Error('Verification not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Verification not found', 404);
   }
 
   try {

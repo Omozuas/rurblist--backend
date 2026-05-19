@@ -4,8 +4,30 @@ const Checker = require('../../middleware/checker');
 const Upload = require('../../middleware/upload');
 const VerificationController = require('../../services/verification/controllers/verificationControllerAdapter');
 const { validateMongoIdParams } = require('../../middleware/validateParams');
+const { validateBody } = require('../../middleware/validate');
+const { createMutationLimiter, createUploadLimiter } = require('../../middleware/rateLimiter');
+const {
+  validate,
+  scheduleInspectionSchema,
+  updateVerificationSchema,
+  updateDocumentStatusSchema,
+  uploadDocumentSchema,
+  completeInspectionSchema,
+  timelineSchema,
+} = require('../../validators/verificationSchemas');
 
 const router = express.Router();
+
+const verificationMutationLimiter = createMutationLimiter({
+  maxEnv: 'VERIFICATION_MUTATION_RATE_LIMIT_MAX',
+  max: 40,
+  code: 'VERIFICATION_MUTATION_RATE_LIMITED',
+});
+const verificationUploadLimiter = createUploadLimiter({
+  maxEnv: 'VERIFICATION_UPLOAD_RATE_LIMIT_MAX',
+  max: 15,
+  code: 'VERIFICATION_UPLOAD_RATE_LIMITED',
+});
 
 router.get('/me', Checker.authmiddleware, VerificationController.getMyVerifications);
 router.get(
@@ -31,6 +53,8 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['verificationId', 'documentId']),
+  verificationMutationLimiter,
+  validateBody({ schema: updateDocumentStatusSchema, validator: validate }),
   VerificationController.updateDocumentStatus,
 );
 router.patch(
@@ -38,7 +62,9 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['verificationId', 'documentId']),
+  verificationUploadLimiter,
   Upload.single('file'),
+  validateBody({ schema: uploadDocumentSchema, validator: validate }),
   VerificationController.uploadDocumentFile,
 );
 router.patch(
@@ -46,6 +72,7 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['verificationId']),
+  verificationUploadLimiter,
   Upload.single('certificate'),
   VerificationController.uploadCertificate,
 );
@@ -54,6 +81,8 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['verificationId']),
+  verificationMutationLimiter,
+  validateBody({ schema: scheduleInspectionSchema, validator: validate }),
   VerificationController.scheduleInspection,
 );
 router.patch(
@@ -61,6 +90,8 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['verificationId']),
+  verificationMutationLimiter,
+  validateBody({ schema: completeInspectionSchema, validator: validate }),
   VerificationController.completeInspection,
 );
 router.post(
@@ -68,6 +99,8 @@ router.post(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['id']),
+  verificationMutationLimiter,
+  validateBody({ schema: timelineSchema, validator: validate }),
   VerificationController.addTimeline,
 );
 router.patch(
@@ -75,6 +108,8 @@ router.patch(
   Checker.authmiddleware,
   Checker.allowRoles('Admin'),
   validateMongoIdParams(['id']),
+  verificationMutationLimiter,
+  validateBody({ schema: updateVerificationSchema, validator: validate }),
   VerificationController.updateVerification,
 );
 

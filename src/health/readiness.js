@@ -1,15 +1,26 @@
 const mongoose = require('mongoose');
 
-async function readinessCheck() {
-  // Basic mongoose connectivity check.
-  // mongoose.connection.readyState:
-  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
-  const state = mongoose.connection.readyState;
+const stateLabels = {
+  0: 'disconnected',
+  1: 'connected',
+  2: 'connecting',
+  3: 'disconnecting',
+};
 
-  // Treat connected as ready.
+async function readinessCheck() {
+  const state = mongoose.connection.readyState;
+  const dbReady = state === 1;
+
   return {
-    ready: state === 1,
-    db: state === 1 ? 'connected' : `readyState:${state}`,
+    ready: dbReady,
+    checks: {
+      database: {
+        ready: dbReady,
+        state: stateLabels[state] || `unknown:${state}`,
+      },
+    },
+    uptime: Math.round(process.uptime()),
+    timestamp: new Date().toISOString(),
   };
 }
 

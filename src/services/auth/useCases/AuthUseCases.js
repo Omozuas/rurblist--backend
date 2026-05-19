@@ -5,6 +5,41 @@ const { nanoid } = require('nanoid');
 const generateOtp = require('../../../utils/generateOtp');
 const SendEmails = require('../../email/emailService');
 const jwtToken = require('../../../config/jwtToken');
+const {
+  emailRegex,
+  phoneRegex,
+  strongPasswordRegex,
+  minPasswordLength,
+  allowedSignupRoles,
+} = require('../../../constants/authRules');
+
+const hashToken = (token) => crypto.createHmac('sha256', process.env.SH_KEY).update(token).digest('hex');
+
+const generateSecureToken = () => crypto.randomBytes(32).toString('hex');
+
+const storeRefreshToken = (user, refreshToken) => {
+  user.refreshToken = hashToken(refreshToken);
+};
+
+const refreshTokenMatches = (user, refreshToken) => user.refreshToken === hashToken(refreshToken);
+
+const getPositiveNumber = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const getPasswordResetOtpMs = () =>
+  getPositiveNumber(process.env.PASSWORD_RESET_OTP_EXPIRES_MS, 30 * 60 * 1000);
+
+const getEmailOtpMs = () => getPositiveNumber(process.env.EMAIL_OTP_EXPIRES_MS, 10 * 60 * 1000);
+
+const getGoogleTicketMs = () =>
+  getPositiveNumber(process.env.GOOGLE_LOGIN_TICKET_EXPIRES_MS, 3 * 60 * 1000);
+
+const passwordResetResponse = {
+  message: 'If an account exists for this email, a password reset OTP has been sent.',
+  success: true,
+};
 
 const createUser = async (deps, input) => {
   const { User, HomeSeeker, Agent } = deps;
@@ -15,11 +50,6 @@ const createUser = async (deps, input) => {
   if (!email || !password || !role || !fullName || !phoneNumber) {
     throw new AppError('All fields are required', 400);
   }
-
-  const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-  const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-  const phoneRegex = /^(?:\+234|0)[789][01]\d{8}$/;
-  const minPasswordLength = 8;
 
   if (!emailRegex.test(email)) {
     throw new AppError('Email is not valid', 401);
@@ -36,7 +66,7 @@ const createUser = async (deps, input) => {
     );
   }
 
-  if (!strongPassword.test(password)) {
+  if (!strongPasswordRegex.test(password)) {
     throw new AppError(
       'Password must contain uppercase, lowercase, number, special character and be at least 8 characters',
       400,
@@ -49,8 +79,7 @@ const createUser = async (deps, input) => {
   }
 
   // Validate allowed roles
-  const allowedRoles = ['Home_Seeker', 'Agent'];
-  if (!allowedRoles.includes(role)) {
+  if (!allowedSignupRoles.includes(role)) {
     throw new AppError('Invalid role selected', 400);
   }
 
@@ -68,7 +97,7 @@ const createUser = async (deps, input) => {
 
   // GENERATE OTP
   const otp = generateOtp();
-  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const otpExpires = new Date(Date.now() + getEmailOtpMs());
   const username = `${fullName}_${nanoid(5)}`;
 
   const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(otp).digest('hex');
@@ -112,8 +141,6 @@ const loginUser = async (deps, input) => {
   const email = input.email?.toLowerCase().trim();
   const { password } = input;
 
-  const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}$/;
-
   if (!emailRegex.test(email)) {
     throw new AppError('Invalid email format', 400);
   }
@@ -142,7 +169,7 @@ const loginUser = async (deps, input) => {
   const accessToken = jwtToken.generateToken(isExisting);
 
   await User.findByIdAndUpdate(isExisting._id, {
-    refreshToken: refreshToken,
+    refreshToken: hashToken(refreshToken),
     isLogin: true,
   });
 
@@ -220,7 +247,7 @@ const resendOtp = async (deps, input) => {
   const newOtp = generateOtp();
   const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(newOtp).digest('hex');
   user.otp = hashedOtp;
-  user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+  user.otpExpires = new Date(Date.now() + getEmailOtpMs());
   await user.save();
 
   await SendEmails.sendOtpMail(user.email, user.fullName, newOtp);
@@ -236,11 +263,11 @@ const forgotPassword = async (deps, input) => {
   const user = await User.findOne({ email });
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    return passwordResetResponse;
   }
 
   if (user.isBlocked) {
-    throw new AppError('Account is blocked', 403);
+    return passwordResetResponse;
   }
 
   const otp = generateOtp();
@@ -250,12 +277,12 @@ const forgotPassword = async (deps, input) => {
     .update(otp)
     .digest('hex');
 
-  user.passwordResetExpires = Date.now() + 30 * 60 * 1000;
+  user.passwordResetExpires = Date.now() + getPasswordResetOtpMs();
 
   await user.save();
   await SendEmails.sendPasswordResetMail(user.email, user.fullName, otp);
 
-  return { message: 'you will recive an OTP mail', success: true };
+  return passwordResetResponse;
 };
 
 const resetPassword = async (deps, input) => {
@@ -324,7 +351,7 @@ const refreshAccessToken = async (deps, input) => {
 
   const user = await User.findById(decoded.userId).select('+refreshToken');
 
-  if (!user || user.refreshToken !== refreshToken) {
+  if (!user || !refreshTokenMatches(user, refreshToken)) {
     throw new AppError('Refresh token does not match', 401);
   }
 
@@ -342,7 +369,7 @@ const refreshAccessToken = async (deps, input) => {
   const newAccessToken = jwtToken.generateToken(user);
   const newRefreshToken = jwtToken.generateRefreshToken(user);
 
-  user.refreshToken = newRefreshToken;
+  storeRefreshToken(user, newRefreshToken);
   await user.save();
 
   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
@@ -351,13 +378,13 @@ const refreshAccessToken = async (deps, input) => {
 const verifyGoogleOtp = async (deps, input) => {
   const { User, jwtToken, crypto } = deps;
 
-  const { otp } = input;
+  const otpOrTicket = input.otp || input.ticket;
 
-  if (!otp) {
-    throw new AppError('OTP is required', 400);
+  if (!otpOrTicket) {
+    throw new AppError('OTP or ticket is required', 400);
   }
 
-  const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(otp).digest('hex');
+  const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(otpOrTicket).digest('hex');
 
   const user = await User.findOne({
     otp: hashedOtp,
@@ -374,7 +401,7 @@ const verifyGoogleOtp = async (deps, input) => {
   const refreshToken = jwtToken.generateRefreshToken(user);
   const accessToken = jwtToken.generateToken(user);
 
-  user.refreshToken = refreshToken;
+  storeRefreshToken(user, refreshToken);
   user.isLogin = true;
 
   await user.save();
@@ -383,23 +410,21 @@ const verifyGoogleOtp = async (deps, input) => {
 };
 
 const completeGoogleCallback = async (deps, input) => {
-  const { User, crypto } = deps;
+  const { User } = deps;
   const { user } = input;
 
   if (!user?._id) {
     throw new AppError('User data missing from Google callback', 400);
   }
 
-  const otp = generateOtp();
-  const hashedOtp = crypto.createHmac('sha256', process.env.SH_KEY).update(otp).digest('hex');
+  const ticket = generateSecureToken();
 
   await User.findByIdAndUpdate(user._id, {
-    otp: hashedOtp,
-    otpExpires: Date.now() + 3 * 60 * 1000,
+    otp: hashToken(ticket),
+    otpExpires: Date.now() + getGoogleTicketMs(),
   });
 
-  // OTP must be consumed by the client from the API response (not from redirect URL)
-  return { otp };
+  return { ticket };
 };
 
 const logout = async (deps, input) => {

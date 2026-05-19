@@ -1,3 +1,5 @@
+const AppError = require('../../../utils/AppError');
+
 const buildCursorResult = (items, pagination) => {
   const hasNextPage = items.length > pagination.limit;
   const data = hasNextPage ? items.slice(0, pagination.limit) : items;
@@ -27,9 +29,7 @@ const cleanupFiles = async (fs, files = []) => {
 };
 
 const createHttpError = (message, statusCode = 400) => {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  return error;
+  return new AppError(message, statusCode);
 };
 
 const verifyBuyerNIN = async (DojahService, { nin }) => {
@@ -97,9 +97,7 @@ const getMyProperties = async (deps, input) => {
   const agent = await Agent.findOne({ user: user._id });
 
   if (!agent) {
-    const err = new Error('You are not an agent');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('You are not an agent', 403);
   }
 
   const baseQuery = {
@@ -153,9 +151,7 @@ const getSingleProperty = async (deps, input) => {
     .lean();
 
   if (!property || property.isDeleted || !property.isAvailable) {
-    const err = new Error('Property not available');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not available', 404);
   }
 
   const ownerAgentId = property.owner._id;
@@ -282,9 +278,7 @@ const getPropertyBySlug = async (deps, input) => {
     .lean();
 
   if (!property || property.isDeleted || !property.isAvailable) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   return {
@@ -302,9 +296,7 @@ const getAgentsPropertiesById = async (deps, input) => {
   const agent = await Agent.findOne({ user: userId });
 
   if (!agent) {
-    const err = new Error('Agent not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Agent not found', 404);
   }
 
   const features = new PropertySearch(
@@ -343,9 +335,7 @@ const likeProperty = async (deps, input) => {
   const property = await Property.exists({ _id: id });
 
   if (!property) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   const removedLike = await Property.updateOne(
@@ -394,9 +384,7 @@ const unlikeProperty = async (deps, input) => {
   const property = await Property.exists({ _id: id });
 
   if (!property) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   const removedUnlike = await Property.updateOne(
@@ -444,9 +432,7 @@ const addComment = async (deps, input) => {
   validateId.validateMongodbId(id);
 
   if (!text || text.length < 2) {
-    const err = new Error('Comment must be at least 2 characters');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Comment must be at least 2 characters', 400);
   }
 
   const property = await Property.exists({
@@ -455,9 +441,7 @@ const addComment = async (deps, input) => {
   });
 
   if (!property) {
-    const err = new Error('Property not available for comments');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not available for comments', 404);
   }
 
   const comment = await Comment.create({
@@ -486,17 +470,13 @@ const addReply = async (deps, input) => {
   validateId.validateMongodbId(commentId);
 
   if (!text || text.length < 2) {
-    const err = new Error('Reply must be at least 2 characters');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Reply must be at least 2 characters', 400);
   }
 
   const parent = await Comment.findById(commentId).select('property');
 
   if (!parent) {
-    const err = new Error('Parent comment not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Parent comment not found', 404);
   }
 
   const reply = await Comment.create({
@@ -530,9 +510,7 @@ const getCommentsByProperty = async (deps, input) => {
   try {
     parsedCursor = cursor ? JSON.parse(cursor) : null;
   } catch {
-    const err = new Error('Invalid cursor format');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid cursor format', 400);
   }
 
   const limitNum = Math.min(parseInt(limit) || 10, 50);
@@ -541,9 +519,7 @@ const getCommentsByProperty = async (deps, input) => {
   const property = await Property.findById(propertyId).select('owner isAvailable');
 
   if (!property || !property.isAvailable) {
-    const err = new Error('Property not available');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not available', 404);
   }
 
   const ownerAgentId = property.owner;
@@ -711,24 +687,18 @@ const deleteProperty = async (deps, input) => {
   const property = await Property.findById(id);
 
   if (!property) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   const agent = await Agent.findOne({ user: user._id });
   const isAdmin = user.roles.includes('Admin');
 
   if (!agent && !isAdmin) {
-    const err = new Error('Not authorized');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized', 403);
   }
 
   if (!isAdmin && property.owner.toString() !== agent._id.toString()) {
-    const err = new Error('Not authorized to delete this property');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized to delete this property', 403);
   }
 
   if (property.images && property.images.length > 0) {
@@ -987,29 +957,21 @@ const updateProperty = async (deps, input) => {
   const property = await Property.findById(id);
 
   if (!property) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   const agent = await Agent.findOne({ user: user._id });
 
   if (!agent) {
-    const err = new Error('You are not an agent');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('You are not an agent', 403);
   }
 
   if (agent.status !== 'approved') {
-    const err = new Error('Agent not approved');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Agent not approved', 403);
   }
 
   if (property.owner.toString() !== agent._id.toString() && !user.roles.includes('Admin')) {
-    const err = new Error('Not authorized');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized', 403);
   }
 
   try {
@@ -1088,9 +1050,7 @@ const updateProperty = async (deps, input) => {
         const parsedLng = Number(lng ?? currentLocation.coordinates?.coordinates?.[0]);
 
         if (isNaN(parsedLat) || isNaN(parsedLng)) {
-          const err = new Error('Invalid coordinates');
-          err.statusCode = 400;
-          throw err;
+          throw new AppError('Invalid coordinates', 400);
         }
 
         property.location.coordinates = {

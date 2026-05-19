@@ -3,16 +3,52 @@ const express = require('express');
 const Checker = require('../../middleware/checker');
 const TourController = require('../../services/tour/controllers/tourControllerAdapter');
 const { validateMongoIdParams } = require('../../middleware/validateParams');
+const { validateBody } = require('../../middleware/validate');
+const { createMutationLimiter } = require('../../middleware/rateLimiter');
+const {
+  validate,
+  createTourSchema,
+  rescheduleTourSchema,
+  sendMessageSchema,
+} = require('../../validators/tourSchemas');
 
 const router = express.Router();
 
-router.post('/', Checker.authmiddleware, TourController.createTour);
-router.post('/message', Checker.authmiddleware, TourController.sendMessage);
+const tourMutationLimiter = createMutationLimiter({
+  maxEnv: 'TOUR_MUTATION_RATE_LIMIT_MAX',
+  max: 40,
+  code: 'TOUR_MUTATION_RATE_LIMITED',
+});
+const tourMessageLimiter = createMutationLimiter({
+  windowEnv: 'TOUR_MESSAGE_RATE_LIMIT_WINDOW_MS',
+  maxEnv: 'TOUR_MESSAGE_RATE_LIMIT_MAX',
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  message: 'Too many tour messages. Please try again later.',
+  code: 'TOUR_MESSAGE_RATE_LIMITED',
+});
+
+router.post(
+  '/',
+  Checker.authmiddleware,
+  tourMutationLimiter,
+  validateBody({ schema: createTourSchema, validator: validate }),
+  TourController.createTour,
+);
+router.post(
+  '/message',
+  Checker.authmiddleware,
+  tourMessageLimiter,
+  validateBody({ schema: sendMessageSchema, validator: validate }),
+  TourController.sendMessage,
+);
 router.put(
   '/reschedule/:tourId',
   Checker.authmiddleware,
   Checker.allowRoles('Agent', 'Landlord', 'Admin'),
   validateMongoIdParams(['tourId']),
+  tourMutationLimiter,
+  validateBody({ schema: rescheduleTourSchema, validator: validate }),
   TourController.rescheduleTour,
 );
 router.put(
@@ -20,12 +56,14 @@ router.put(
   Checker.authmiddleware,
   Checker.allowRoles('Agent', 'Landlord', 'Admin'),
   validateMongoIdParams(['tourId']),
+  tourMutationLimiter,
   TourController.confirmTour,
 );
 router.put(
   '/cancel/:tourId',
   Checker.authmiddleware,
   validateMongoIdParams(['tourId']),
+  tourMutationLimiter,
   TourController.cancelTour,
 );
 router.get('/user/conversations', Checker.authmiddleware, TourController.getUserConversations);

@@ -1,3 +1,5 @@
+const AppError = require('../../../utils/AppError');
+
 const buildCursorFilter = (cursor, field = 'createdAt') => {
   if (!cursor) return {};
 
@@ -14,9 +16,7 @@ const buildCursorFilter = (cursor, field = 'createdAt') => {
       ],
     };
   } catch {
-    const err = new Error('Invalid cursor format');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid cursor format', 400);
   }
 };
 
@@ -44,29 +44,21 @@ const createTour = async (deps, input) => {
   const { agentId, propertyId, price, tourType, scheduledAt, note } = body;
 
   if (!agentId || !propertyId || !price || !tourType || !scheduledAt) {
-    const err = new Error('All fields including date & time are required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('All fields including date & time are required', 400);
   }
 
   if (price < 1000) {
-    const err = new Error('Price cannot be less than 1000');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Price cannot be less than 1000', 400);
   }
 
   const tourDate = new Date(scheduledAt);
 
   if (isNaN(tourDate.getTime())) {
-    const err = new Error('Invalid date');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid date', 400);
   }
 
   if (tourDate < new Date()) {
-    const err = new Error('Tour date must be in the future');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Tour date must be in the future', 400);
   }
 
   const existingTour = await Tour.findOne({
@@ -77,9 +69,7 @@ const createTour = async (deps, input) => {
   });
 
   if (existingTour) {
-    const err = new Error('This time slot is already booked for this agent');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('This time slot is already booked for this agent', 400);
   }
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -122,38 +112,28 @@ const rescheduleTour = async (deps, input) => {
     .populate('property', 'location.address title _id');
 
   if (!tour) {
-    const err = new Error('Tour not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Tour not found', 404);
   }
 
   if (
     tour.user._id.toString() !== user._id.toString() &&
     tour.agent.user._id.toString() !== user._id.toString()
   ) {
-    const err = new Error('Not authorized to reschedule this tour');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not authorized to reschedule this tour', 403);
   }
 
   if (tour.status === 'cancelled') {
-    const err = new Error('Cannot reschedule a cancelled tour');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Cannot reschedule a cancelled tour', 400);
   }
 
   const newTourDate = new Date(newDate);
 
   if (isNaN(newTourDate.getTime())) {
-    const err = new Error('Invalid date');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid date', 400);
   }
 
   if (newTourDate < new Date()) {
-    const err = new Error('New date must be in the future');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('New date must be in the future', 400);
   }
 
   const start = new Date(newTourDate.getTime() - 60 * 60 * 1000);
@@ -168,9 +148,7 @@ const rescheduleTour = async (deps, input) => {
   });
 
   if (conflict) {
-    const err = new Error('New time slot is already booked');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('New time slot is already booked', 400);
   }
 
   tour.date = newTourDate;
@@ -206,15 +184,11 @@ const cancelTour = async (deps, input) => {
     .populate('property', 'location.address title _id');
 
   if (!tour) {
-    const err = new Error('Tour not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Tour not found', 404);
   }
 
   if (tour.status === 'cancelled') {
-    const err = new Error('Tour already cancelled');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Tour already cancelled', 400);
   }
 
   tour.status = 'cancelled';
@@ -252,27 +226,19 @@ const confirmTour = async (deps, input) => {
     .populate('property', 'location.address title _id');
 
   if (!tour) {
-    const err = new Error('Tour not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Tour not found', 404);
   }
 
   if (tour.status === 'cancelled') {
-    const err = new Error('Tour already cancelled');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Tour already cancelled', 400);
   }
 
   if (tour.status === 'confirmed') {
-    const err = new Error('Tour already confirmed');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Tour already confirmed', 400);
   }
 
   if (!tour.paid) {
-    const err = new Error('Cannot confirm unpaid tour');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Cannot confirm unpaid tour', 400);
   }
 
   tour.status = 'confirmed';
@@ -331,9 +297,7 @@ const getAgentTours = async (deps, input) => {
   const agent = await Agent.findOne({ user: user._id }).select('_id').lean();
 
   if (!agent) {
-    const err = new Error('Agent profile not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Agent profile not found', 404);
   }
 
   const tours = await Tour.find({
@@ -381,9 +345,7 @@ const getTourById = async (deps, input) => {
     });
 
   if (!tour) {
-    const err = new Error('Tour not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Tour not found', 404);
   }
 
   return {
@@ -397,9 +359,7 @@ const sendMessage = async (deps, input) => {
   const { agentId, text } = body;
 
   if (!agentId || !text) {
-    const err = new Error('agentId and text are required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('agentId and text are required', 400);
   }
 
   let conversation = await Conversation.findOne({
@@ -470,11 +430,7 @@ const getUserConversations = async (deps, input) => {
     .limit(limit + 1)
     .lean();
 
-  const { data, hasNextPage, nextCursor } = buildCursorResponse(
-    conversations,
-    limit,
-    'updatedAt',
-  );
+  const { data, hasNextPage, nextCursor } = buildCursorResponse(conversations, limit, 'updatedAt');
 
   return {
     success: true,
@@ -493,9 +449,7 @@ const getAgentConversations = async (deps, input) => {
   const agent = await Agent.findOne({ user: user._id }).select('_id').lean();
 
   if (!agent) {
-    const err = new Error('Agent profile not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Agent profile not found', 404);
   }
 
   const conversations = await Conversation.find({
@@ -508,11 +462,7 @@ const getAgentConversations = async (deps, input) => {
     .limit(limit + 1)
     .lean();
 
-  const { data, hasNextPage, nextCursor } = buildCursorResponse(
-    conversations,
-    limit,
-    'updatedAt',
-  );
+  const { data, hasNextPage, nextCursor } = buildCursorResponse(conversations, limit, 'updatedAt');
 
   return {
     success: true,

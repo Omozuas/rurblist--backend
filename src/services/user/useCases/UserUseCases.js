@@ -1,3 +1,5 @@
+const AppError = require('../../../utils/AppError');
+
 const getProfileModelFromRoles = (deps, roles = []) => {
   const { HomeSeeker, Agent } = deps;
 
@@ -22,9 +24,7 @@ const buildSavedPropertyCursorFilter = (cursor) => {
       ],
     };
   } catch {
-    const err = new Error('Invalid cursor format');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Invalid cursor format', 400);
   }
 };
 
@@ -51,9 +51,7 @@ const getCurrentUser = async (deps, input) => {
   const { user: authUser } = input;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   validateId.validateMongodbId(authUser._id);
@@ -63,9 +61,7 @@ const getCurrentUser = async (deps, input) => {
   );
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   let agent = null;
@@ -127,9 +123,7 @@ const getUserById = async (deps, input) => {
   );
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   const profiles = {};
@@ -163,9 +157,7 @@ const updateUserById = async (deps, input) => {
   const { user: authUser, body, files } = input;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   validateId.validateMongodbId(authUser._id);
@@ -173,9 +165,7 @@ const updateUserById = async (deps, input) => {
   const user = await User.findById(authUser._id);
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   let imageUrl = user.profileImage?.url;
@@ -218,15 +208,11 @@ const updateUserById = async (deps, input) => {
       let shouldUpdateStatus = false;
 
       if (body.nin && body.nin.length !== 11) {
-        const err = new Error('Invalid NIN');
-        err.statusCode = 400;
-        throw err;
+        throw new AppError('Invalid NIN', 400);
       }
 
       if (homeSeeker.status === 'under_review') {
-        const err = new Error('Verification already in progress');
-        err.statusCode = 400;
-        throw err;
+        throw new AppError('Verification already in progress', 400);
       }
 
       if (body?.nin) {
@@ -273,10 +259,9 @@ const updateUserById = async (deps, input) => {
       data: updatedUser,
     };
   } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-    throw error;
+    throw error instanceof AppError
+      ? error
+      : new AppError(error.message || 'Failed to update user profile', 500);
   }
 };
 
@@ -285,26 +270,20 @@ const getSavedProperties = async (deps, input) => {
   const { user: authUser, query } = input;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   const limit = Math.min(parseInt(query.limit) || 12, 50);
   const Model = getProfileModelFromRoles(deps, authUser.roles);
 
   if (!Model) {
-    const err = new Error('This role cannot have saved properties');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('This role cannot have saved properties', 403);
   }
 
   const profile = await Model.findOne({ user: authUser._id }).select('savedProperties').lean();
 
   if (!profile) {
-    const err = new Error('Profile not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Profile not found', 404);
   }
 
   const savedIds = profile.savedProperties || [];
@@ -349,9 +328,7 @@ const toggleSaveProperty = async (deps, input) => {
   const { user: authUser, propertyId } = input;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   validateId.validateMongodbId(propertyId);
@@ -362,25 +339,19 @@ const toggleSaveProperty = async (deps, input) => {
   });
 
   if (!property) {
-    const err = new Error('Property not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Property not found', 404);
   }
 
   const Model = getProfileModelFromRoles(deps, authUser.roles);
 
   if (!Model) {
-    const err = new Error('Not allowed');
-    err.statusCode = 403;
-    throw err;
+    throw new AppError('Not allowed', 403);
   }
 
   const profile = await Model.findOne({ user: authUser._id }).select('savedProperties');
 
   if (!profile) {
-    const err = new Error('Profile not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Profile not found', 404);
   }
 
   const isSaved = profile.savedProperties.some((id) => id.toString() === propertyId);
@@ -413,15 +384,11 @@ const blockUserById = async (deps, input) => {
   const user = await User.findById(id);
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   if (user.isBlocked) {
-    const err = new Error('User is already blocked');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('User is already blocked', 400);
   }
 
   user.isBlocked = true;
@@ -443,15 +410,11 @@ const unblockUserById = async (deps, input) => {
   const user = await User.findById(id);
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   if (!user.isBlocked) {
-    const err = new Error('User is not blocked');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('User is not blocked', 400);
   }
 
   user.isBlocked = false;
@@ -473,9 +436,7 @@ const deleteUserById = async (deps, input) => {
   const user = await User.findByIdAndDelete(id);
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   const publicId = user.profileImage?.public_id;
@@ -494,9 +455,7 @@ const deleteMyAccount = async (deps, input) => {
   const { user: authUser } = input;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   validateId.validateMongodbId(authUser._id);
@@ -504,9 +463,7 @@ const deleteMyAccount = async (deps, input) => {
   const user = await User.findByIdAndDelete(authUser._id);
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   const publicId = user.profileImage?.public_id;
@@ -526,9 +483,7 @@ const updateUserPassword = async (deps, input) => {
   const { oldPassword, password } = body;
 
   if (!authUser?._id) {
-    const err = new Error('User not authenticated');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('User not authenticated', 401);
   }
 
   validateId.validateMongodbId(authUser._id);
@@ -536,46 +491,35 @@ const updateUserPassword = async (deps, input) => {
   const user = await User.findById(authUser._id).select('+password');
 
   if (!user) {
-    const err = new Error('User not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('User not found', 404);
   }
 
   if (!oldPassword || !password) {
-    const err = new Error('Old password and new password are required');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Old password and new password are required', 400);
   }
 
   if (password.length < 8) {
-    const err = new Error('Password must be at least 8 characters');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('Password must be at least 8 characters', 400);
   }
 
   const isMatch = await bcrypt.compare(oldPassword, user.password);
 
   if (!isMatch) {
-    const err = new Error('Old password is incorrect');
-    err.statusCode = 401;
-    throw err;
+    throw new AppError('Old password is incorrect', 401);
   }
 
   const samePassword = await bcrypt.compare(password, user.password);
 
   if (samePassword) {
-    const err = new Error('New password cannot be the same as old password');
-    err.statusCode = 400;
-    throw err;
+    throw new AppError('New password cannot be the same as old password', 400);
   }
 
   const strongPassword = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
   if (!strongPassword.test(password)) {
-    const err = new Error(
+    throw new AppError(
       'Password must contain uppercase, lowercase, number, special character and be at least 8 characters',
+      400,
     );
-    err.statusCode = 400;
-    throw err;
   }
 
   user.password = await bcrypt.hash(password, 10);

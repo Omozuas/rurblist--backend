@@ -1,4 +1,6 @@
 const axios = require('axios');
+const AppError = require('../utils/AppError');
+const logger = require('../utils/logger');
 
 const DOJAH_BASE_URL = process.env.DOJAH_BASE_URL || 'https://sandbox.dojah.io/api/v1';
 const DOJAH_TIMEOUT = Number(process.env.DOJAH_TIMEOUT_MS) || 30000;
@@ -8,11 +10,11 @@ function getHeaders() {
   const secretKey = process.env.DOJAH_SECRET_KEY;
 
   if (!appId) {
-    throw new Error('DOJAH_APP_ID is missing');
+    throw new AppError('DOJAH_APP_ID is missing', 500);
   }
 
   if (!secretKey) {
-    throw new Error('DOJAH_SECRET_KEY is missing');
+    throw new AppError('DOJAH_SECRET_KEY is missing', 500);
   }
 
   return {
@@ -37,9 +39,7 @@ class DojahService {
   static async verifyNIN(nin, callbackErr) {
     try {
       if (!nin) {
-        const error = new Error('NIN is required');
-        error.statusCode = 400;
-        throw error;
+        throw new AppError('NIN is required', 400);
       }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/nin`, {
@@ -62,7 +62,7 @@ class DojahService {
         callbackErr(errorResponse);
       }
 
-      console.error('NIN Verification Error:', {
+      logger.error('NIN verification failed', {
         status: errorResponse.statusCode,
         message: errorResponse.error,
       });
@@ -80,9 +80,7 @@ class DojahService {
   static async verifyCAC(cacNumber, callbackErr) {
     try {
       if (!cacNumber) {
-        const error = new Error('CAC number is required');
-        error.statusCode = 400;
-        throw error;
+        throw new AppError('CAC number is required', 400);
       }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/cac`, {
@@ -105,7 +103,7 @@ class DojahService {
         callbackErr(errorResponse);
       }
 
-      console.error('CAC Verification Error:', {
+      logger.error('CAC verification failed', {
         status: errorResponse.statusCode,
         message: errorResponse.error,
       });
@@ -123,9 +121,7 @@ class DojahService {
   static async verifyBVN(bvn) {
     try {
       if (!bvn) {
-        const error = new Error('BVN is required');
-        error.statusCode = 400;
-        throw error;
+        throw new AppError('BVN is required', 400);
       }
 
       const response = await axios.get(`${DOJAH_BASE_URL}/kyc/bvn`, {
@@ -144,7 +140,7 @@ class DojahService {
     } catch (error) {
       const errorResponse = DojahService.buildErrorResponse(error);
 
-      console.error('BVN Verification Error:', {
+      logger.error('BVN verification failed', {
         status: errorResponse.statusCode,
         message: errorResponse.error,
       });
@@ -162,9 +158,7 @@ class DojahService {
   static async verifyLiveness(imageUrl) {
     try {
       if (!imageUrl) {
-        const error = new Error('Image is required for liveness');
-        error.statusCode = 400;
-        throw error;
+        throw new AppError('Image is required for liveness', 400);
       }
 
       const response = await axios.post(
@@ -183,7 +177,7 @@ class DojahService {
     } catch (error) {
       const errorResponse = DojahService.buildErrorResponse(error);
 
-      console.error('Liveness Check Error:', {
+      logger.error('Liveness check failed', {
         status: errorResponse.statusCode,
         message: errorResponse.error,
       });

@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 const sgMail = require('@sendgrid/mail');
+const logger = require('../../utils/logger');
 
 class SendEmails {
   static sendGridConfigured = false;
@@ -109,8 +110,8 @@ class SendEmails {
   });
 
   static logEmailError = (error) => {
-    console.error('Email send failed:', {
-      message: error.message,
+    logger.error('Email send failed', {
+      error,
       code: error.code,
       command: error.command,
       status: error.response?.status,
@@ -143,7 +144,7 @@ class SendEmails {
         timeout: SendEmails.getEmailTimeout(),
       });
 
-      console.log('Email sent successfully:', {
+      logger.info('Email sent successfully', {
         provider: 'brevo',
         messageId: response.data?.messageId,
         subject: mailOptions.subject,
@@ -176,7 +177,7 @@ class SendEmails {
       }
 
       const [response] = await sgMail.send(message);
-      console.log('Email sent successfully:', {
+      logger.info('Email sent successfully', {
         provider: 'sendgrid',
         statusCode: response.statusCode,
         subject: mailOptions.subject,
@@ -185,7 +186,7 @@ class SendEmails {
     }
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully:', {
+    logger.info('Email sent successfully', {
       provider: 'smtp',
       messageId: info.messageId,
       response: info.response,

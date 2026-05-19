@@ -9,38 +9,73 @@ const Agent = require('../../../models/Agent');
 const SendEmails = require('../../email/emailService');
 const jwtToken = require('../../../config/jwtToken');
 const AuthContract = require('../contracts/authContract');
+const AppError = require('../../../utils/AppError');
+
+const accessCookieName = process.env.ACCESS_TOKEN_COOKIE_NAME || 'rublist_auth';
+const refreshCookieName = process.env.REFRESH_TOKEN_COOKIE_NAME || 'refreshToken';
+
+const getCookieMaxAge = (envKey, fallback) => {
+  const value = Number(process.env[envKey]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const buildAuthResponseData = ({ accessToken, refreshToken }) => {
+  const data = { accessToken };
+
+  if (process.env.RETURN_REFRESH_TOKEN_IN_BODY !== 'false') {
+    data.refreshToken = refreshToken;
+  }
+
+  return data;
+};
 
 const cookieOptions = () => {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = (process.env.NODE_ENV || '').trim() === 'production';
 
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    secure: process.env.COOKIE_SECURE
+      ? process.env.COOKIE_SECURE.trim() === 'true'
+      : isProduction,
+    sameSite: process.env.COOKIE_SAME_SITE || (isProduction ? 'none' : 'lax'),
+    path: '/',
   };
 };
 
 const setAuthCookies = (res, { accessToken, refreshToken }) => {
   const options = cookieOptions();
 
-  res.cookie('refreshToken', refreshToken, {
+  res.cookie(refreshCookieName, refreshToken, {
     ...options,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: getCookieMaxAge('REFRESH_TOKEN_COOKIE_MAX_AGE_MS', 7 * 24 * 60 * 60 * 1000),
   });
-  res.cookie('rublist_auth', accessToken, {
+
+  res.cookie(accessCookieName, accessToken, {
     ...options,
-    maxAge: 60 * 60 * 1000,
+    maxAge: getCookieMaxAge('ACCESS_TOKEN_COOKIE_MAX_AGE_MS', 60 * 60 * 1000),
   });
 };
 
 const clearAuthCookies = (res) => {
   const options = cookieOptions();
 
-  res.clearCookie('refreshToken', options);
-  res.clearCookie('rublist_auth', options);
+  res.clearCookie(refreshCookieName, options);
+  res.clearCookie(accessCookieName, options);
 };
 
 module.exports = {
+  requireRefreshToken: (req, res, next) => {
+    const refreshToken = req.cookies?.[refreshCookieName] || req.body?.refreshToken;
+
+    if (!refreshToken) {
+      return next(
+        new AppError('refreshToken is required', 400, undefined, 'REFRESH_TOKEN_REQUIRED'),
+      );
+    }
+
+    return next();
+  },
+
   createUser: asynchandler(async (req, res) => {
     const result = await AuthContract.createUser({ User, HomeSeeker, Agent }, req.body);
     return res.status(201).json(result);
@@ -54,7 +89,7 @@ module.exports = {
     return res.status(200).json({
       success: true,
       message: 'Login successful',
-      data: { accessToken, refreshToken },
+      data: buildAuthResponseData({ accessToken, refreshToken }),
     });
   }),
 
@@ -79,7 +114,7 @@ module.exports = {
   }),
 
   refreshAccessToken: asynchandler(async (req, res) => {
-    const refreshToken = req.cookies?.refreshToken || req.body.refreshToken;
+    const refreshToken = req.cookies?.[refreshCookieName] || req.body.refreshToken;
     const result = await AuthContract.refreshAccessToken({ User, jwtToken }, { refreshToken });
 
     setAuthCookies(res, {
@@ -90,10 +125,10 @@ module.exports = {
     return res.status(200).json({
       success: true,
       message: 'success',
-      data: {
+      data: buildAuthResponseData({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-      },
+      }),
     });
   }),
 
@@ -108,10 +143,10 @@ module.exports = {
     return res.status(200).json({
       success: true,
       message: 'success',
-      data: {
+      data: buildAuthResponseData({
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-      },
+      }),
     });
   }),
 
@@ -130,12 +165,9 @@ module.exports = {
   googleCallback: [
     passport.authenticate('google', { failureRedirect: '/login', session: false }),
     asynchandler(async (req, res) => {
-      const result = await AuthContract.completeGoogleCallback(
-        { User, crypto },
-        { user: req.user },
-      );
+      const result = await AuthContract.completeGoogleCallback({ User }, { user: req.user });
 
-      return res.redirect(`${process.env.FRONTEND_URL}/oAuth-success-page?otp=${result.otp}`);
+      return res.redirect(`${process.env.FRONTEND_URL}/oAuth-success-page?ticket=${result.ticket}`);
     }),
   ],
 };

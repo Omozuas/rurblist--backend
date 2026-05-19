@@ -1,4 +1,10 @@
 const AppError = require('../../../utils/AppError');
+const logger = require('../../../utils/logger');
+
+const getPaystackTimeout = () => {
+  const timeout = Number(process.env.PAYSTACK_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout > 0 ? timeout : 30000;
+};
 
 const convertToSmallestUnit = (amount, currency) => {
   const zeroDecimalCurrencies = [];
@@ -84,7 +90,7 @@ const payForTour = async (deps, input) => {
       headers: {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
       },
-      timeout: 30000,
+      timeout: getPaystackTimeout(),
     });
 
     return {
@@ -228,7 +234,7 @@ const payForProperty = async (deps, input) => {
         Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000,
+      timeout: getPaystackTimeout(),
     });
 
     return {
@@ -237,7 +243,8 @@ const payForProperty = async (deps, input) => {
       data: response.data.data,
     };
   } catch (error) {
-    console.error('Paystack Property Init Error:', {
+    logger.error('Paystack property initialization failed', {
+      error,
       status: error.response?.status,
       data: error.response?.data,
       reference,
@@ -278,7 +285,7 @@ const verifyPayment = async (deps, input) => {
     headers: {
       Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
     },
-    timeout: 30000,
+    timeout: getPaystackTimeout(),
   });
 
   const data = response.data.data;
@@ -290,9 +297,7 @@ const verifyPayment = async (deps, input) => {
     .populate('tour');
 
   if (!payment) {
-    const err = new Error('Payment not found');
-    err.statusCode = 404;
-    throw err;
+    throw new AppError('Payment not found', 404);
   }
 
   if (data.status !== 'success') {
@@ -308,8 +313,8 @@ const verifyPayment = async (deps, input) => {
       try {
         await sendReceiptIfNeeded({ SendEmails, generateReceiptBuffer }, payment);
       } catch (err) {
-        console.error('Receipt email failed:', {
-          message: err.message,
+        logger.error('Receipt email failed', {
+          error: err,
           paymentId: payment._id,
           reference: payment.reference,
         });
@@ -402,8 +407,8 @@ const verifyPayment = async (deps, input) => {
     try {
       await sendReceiptIfNeeded({ SendEmails, generateReceiptBuffer }, payment);
     } catch (err) {
-      console.error('Receipt email failed:', {
-        message: err.message,
+      logger.error('Receipt email failed', {
+        error: err,
         paymentId: payment._id,
         reference: payment.reference,
       });
@@ -563,8 +568,8 @@ const processWebhook = async (deps, input) => {
         try {
           await sendReceiptIfNeeded({ SendEmails, generateReceiptBuffer }, payment);
         } catch (err) {
-          console.error('Receipt email failed:', {
-            message: err.message,
+          logger.error('Receipt email failed', {
+            error: err,
             paymentId: payment._id,
             reference: payment.reference,
           });
@@ -580,8 +585,8 @@ const processWebhook = async (deps, input) => {
       await payment.save();
     }
   } catch (err) {
-    console.error('Webhook processing failed:', {
-      message: err.message,
+    logger.error('Webhook processing failed', {
+      error: err,
       paymentId,
       event: event.event,
     });

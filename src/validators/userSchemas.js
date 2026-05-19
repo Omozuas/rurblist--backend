@@ -1,37 +1,21 @@
-function hasString(v) {
-  return typeof v === 'string' && v.trim().length > 0;
-}
-
-function validate(schema, body) {
-  const errors = [];
-
-  for (const [key, rule] of Object.entries(schema)) {
-    const value = body ? body[key] : undefined;
-    const err = rule(value, body);
-    if (err) errors.push({ field: key, message: err });
-  }
-
-  return errors;
-}
-
-function isMongoId(v) {
-  if (typeof v !== 'string') return false;
-  return /^[a-fA-F0-9]{24}$/.test(v);
-}
+const { emailRegex, phoneRegex } = require('../constants/authRules');
+const { hasString, validate } = require('./common');
 
 const changePasswordSchema = {
   oldPassword: (v) => (hasString(v) ? null : 'oldPassword is required'),
   password: (v) => (hasString(v) ? null : 'password is required'),
 };
 
-// Param validation (used with validate() against req.params)
-const mongoIdParamSchema = {
-  id: (v) => (isMongoId(v) ? null : 'id must be a valid MongoId'),
-  propertyId: (v) => (isMongoId(v) ? null : 'propertyId must be a valid MongoId'),
+const updateUserSchema = {
+  email: (v) => (v === undefined || emailRegex.test(String(v).trim()) ? null : 'email is invalid'),
+  mobile: (v) =>
+    v === undefined || phoneRegex.test(String(v).trim()) ? null : 'mobile is invalid',
+  nin: (v) =>
+    v === undefined || String(v).trim().length === 11 ? null : 'nin must be 11 characters',
 };
 
 module.exports = {
   validate,
   changePasswordSchema,
-  mongoIdParamSchema,
+  updateUserSchema,
 };
